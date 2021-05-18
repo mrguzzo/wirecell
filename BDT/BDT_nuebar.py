@@ -340,7 +340,9 @@ def create_dataframe(file, family):
     # --- merge dataframes        
     df = pd.concat([df_KINE, df_PFeval, df_BDT, df_eval], axis=1)
 
-    # -------------------------------------------------------------------------------------- calculate cos_theta wrt the beam direction
+    # -------------------------------------------------- #
+    #     calculate cos_theta wrt the beam direction     #
+    # -------------------------------------------------- #
     
     T_PFeval_cos_theta = uproot.open(file)['wcpselection/T_PFeval']
     df_PFeval_cos_theta = T_PFeval_cos_theta.pandas.df("reco_showerMomentum", flatten=False)
@@ -358,13 +360,16 @@ def create_dataframe(file, family):
 
     df.loc[:,'cos_theta'] = cos_theta
 
-    # -------------------------------------------------------------------------------------- calculate POT
+    # ------------------- #
+    #    calculate POT    #
+    # ------------------- #
 
     POT = sum(df_pot.pot_tor875)
-
     print('POT = %.2e' % POT)
 
-    # -------------------------------------------------------------------------------------- fix weights
+    # ----------------- #
+    #    fix weights    #
+    # ----------------- #
 
     # --- make sure weights are valid numbers  
   
@@ -373,7 +378,6 @@ def create_dataframe(file, family):
     df.loc[ df['weight_cv']==np.nan, 'weight_cv' ] = 1
     df.loc[ df['weight_cv']==np.inf, 'weight_cv' ] = 1
     df.loc[ df['weight_cv'].isna(), 'weight_cv' ] = 1
-
     df.loc[ df['weight_spline']<=0, 'weight_spline' ] = 1
     df.loc[ df['weight_spline']>30, 'weight_spline' ] = 1
     df.loc[ df['weight_spline']==np.nan, 'weight_spline' ] = 1
@@ -385,7 +389,7 @@ def create_dataframe(file, family):
     if(family=='NUE'): W_ = 1
     elif(family=='MC'): W_ = 1#POT/POT_NUE
 
-    print('POT/POT_NUE = %.2e' % W_)
+    print('W_ = %.2e' % W_)
 
     df.loc[:,'weight_genie'] = df['weight_cv']*df['weight_spline']
     df.loc[:,'weight'] = [W_]*df.shape[0]*df['weight_genie']
@@ -414,12 +418,16 @@ def create_dataframe(file, family):
 print('\n\033[1mCreating dataframe for intrinsic nue...\033[0m\n')
 df_intrinsic_nue, POT_NUE = create_dataframe("~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root",'NUE')
 print('Sum of Weights = %.2e' % sum(df_intrinsic_nue.weight))
+print('Number of entries = %.2e' % len(df_intrinsic_nue))
 
 print('\n\033[1mCreating dataframe for overlay...\033[0m\n')
 df_overlay, POT_MC = create_dataframe("~/Desktop/organised_phd/wirecell/BDT/files/nu_overlay_run2.root",'MC')
 print('Sum of Weights = %.2e' % sum(df_overlay.weight))
+print('Number of entries = %.2e' % len(df_overlay))
 
+print('\n\033[1mMerging intrinsic nue and overlay samples...\033[0m\n')
 df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
+print('Number of entries after merging: %.2e  (nue = %.2f    overlay = %.2f)' % (len(df),len(df_intrinsic_nue)/len(df),len(df_overlay)/len(df)))
 
 extra_variables = ['cos_theta'] # variables that were calculated
 
@@ -454,7 +462,7 @@ print_summary(df_nuebar,"Signal")
 
 # background
 df_notnuebar = df[df.truth_nuPdg!=-12]
-print_summary(df_notnuebar,"Background before")
+print_summary(df_notnuebar,"Background before resizing")
 
 # calculate the sum of the weights to fix them after resizing the background dataframe
 # original weights = signal + background
@@ -464,17 +472,24 @@ original_w_overlay = sum(df_nuebar[df_nuebar.original_file==1].weight) + sum(df_
 # -------------------------------------------------------------------------------------
 print('\n\033[1mResizing background dataframe...\033[0m')
 
-prop = 1 # entries_bkg = prop * entries_sig
+nentries_new_bkg = int( 1 * len(df_nuebar) ) # entries_bkg = prop * entries_sig
 
 df_notnuebar = shuffle(df_notnuebar).reset_index(drop=True) 
-df_notnuebar = df_notnuebar.head(prop*len(df_nuebar))
+df_notnuebar = df_notnuebar.head(nentries_new_bkg)
 
-print_summary(df_notnuebar,"Background after")
+print_summary(df_notnuebar,"Background after resizing")
 
 # calculate the sum of the weights to fix them after resizing the background dataframe
 # final weights = signal + background
 final_w_nue     = sum(df_nuebar[df_nuebar.original_file==0].weight) + sum(df_notnuebar[df_notnuebar.original_file==0].weight)
 final_w_overlay = sum(df_nuebar[df_nuebar.original_file==1].weight) + sum(df_notnuebar[df_notnuebar.original_file==1].weight)
+
+# print particle id summary for the background sample
+n_nue = len(df_notnuebar[df_notnuebar['truth_nuPdg']==12])
+n_nuebar = len(df_notnuebar[df_notnuebar['truth_nuPdg']==-12])
+print('\nParticle ID summary:')
+print('nue       = %.0f' % len(df_notnuebar[df_notnuebar['truth_nuPdg']==12]))
+print('nuebar    = %.0f' % len(df_notnuebar[df_notnuebar['truth_nuPdg']==-12]))
 
 '''
 # -------------------------------------------------------------------------------------
@@ -596,7 +611,17 @@ w_test = df_test['weight']
 #      BDT TRAINING      #
 # ====================== #
 
-print('\n\033[1mStart training...\033[0m')
+print('\n\033[1mStart training...\033[0m\n')
+
+print('Signal')
+print('Training:     %.2e entries' % len(df_nuebar_train))
+print('Validation:   %.2e entries' % len(df_nuebar_val))
+print('Testing:      %.2e entries' % len(df_nuebar_test))
+
+print('\nBackground')
+print('Training:     %.2e entries' % len(df_notnuebar_train))
+print('Validation:   %.2e entries' % len(df_notnuebar_val))
+print('Testing:      %.2e entries' % len(df_notnuebar_test))
 
 use_label_encoder=False # removes warning message because XGBClassifier won't be used in future releases
 
@@ -783,3 +808,57 @@ plt.xlabel('BDT score')
 plt.legend(loc='best', prop={'size': legend_size})
 
 plt.savefig('plots/final_bdt.pdf')
+
+'''
+# ======================================= #
+#      BDT TRAINING USING GRID SEARCH     #
+# ======================================= #
+
+from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
+
+hyperparams = {'n_estimators' : [300, 400, 500, 600, 700],
+               'max_depth' : [2, 3, 4, 5, 6],
+               'learning_rate' : [0.05, 0.075, 0.1, 0.125]}
+
+bst = XGBClassifier(n_estimators=550,                     # maximum number of rounds
+                      max_depth=3,                        # number of cuts
+                      scale_pos_weight = 5,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
+                      learning_rate=0.1,                  # steps
+                      objective='binary:logistic',        # bdt score 0-1
+                      colsample_bytree=0.8)
+
+param_comb = 5
+
+random_search = RandomizedSearchCV(bst, param_distributions=hyperparams, n_iter=param_comb, scoring='roc_auc', verbose=100, random_state=1001)
+
+random_search.fit(x_train,                                            # feature matrix
+                y_train,                                              # labels (Y=1 signal, Y=0 background)
+                sample_weight=w_train,                                # instance weights
+                eval_set = [(x_train,y_train), (x_val,y_val)],        # a list of (X,y) tuple pairs to use as validation sets ---> validation_0=train, validation_1=validation
+                sample_weight_eval_set = [w_train, w_val],            # list of arrays storing instances weights for the i-th validation set
+                eval_metric = ['auc', 'error'],                       # list of parameters under eval_metric: https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
+                early_stopping_rounds=300,                            # validation metric needs to improve at least once in every early_stopping_rounds round(s)
+                verbose=100)
+
+print('\n All results:')
+print(random_search.cv_results_)
+print('\n Best estimator:')
+print(random_search.best_estimator_)
+print('\n Best hyperparameters:')
+print(random_search.best_params_)
+
+results = pd.DataFrame(random_search.cv_results_)
+best_xgb = random_search.best_estimator_
+progress = best_xgb.evals_result()
+
+plt.plot(progress['validation_0']['error'], label='Training')
+plt.plot(progress['validation_1']['error'], label ='Validation')
+plt.axvline(np.argmin(progress['validation_1']['error']), ls = '--')
+plt.xlabel('Boosting Stage', fontsize = 16)
+plt.ylabel('Error', fontsize = 16)
+plt.title('BDT Training', fontsize = 18)
+plt.legend()
+plt.savefig('plots/after_boosting.pdf')
+'''
