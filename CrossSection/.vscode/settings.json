@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.gdml": "xml",
+        "my_functions.C": "cpp",
+        "histogramHelper.C": "cpp"
+    }
+}

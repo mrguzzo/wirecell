@@ -1,8 +1,16 @@
-# ideas to implement
-# (done) merge intrinsic nue and overlay sample (for better diversity in the background)
-# (done) should I cut down the signal and background (make sure to shuffle it) to the same number of entries?
-# - richsearch (take a look at the end of the tutorial) -- optimise the cuts
-# - cut down variables (using the correltion matrix for it)
+# ================= #
+#     TO-DO LIST    #
+# ================= #
+
+# [ok] merge intrinsic nue and overlay samples
+# [ok] cut down the signal and background to the same number of entries
+# [  ] implement grid search
+# [  ] cut down variables
+# [  ] scale_pos_weight = ratio between sum of the weights, instead of the number of entries
+# [  ] I don't need n_estimators if I'm using early_stopping_rounds
+# [ok] check the overlay POT, it should be ~e20
+# [  ] use variables k_something ?
+# [  ] include particle ID
 
 # ================= #
 #     INCLUDES      #
@@ -12,7 +20,6 @@ import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-#%matplotlib inline
 from matplotlib import gridspec
 
 import uproot3 as uproot
@@ -23,9 +30,17 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, roc
 
 from xgboost import XGBClassifier
 
-#================================================ #
-#      SELECT VARIABLES TO IMPORT FROM TREES      #
-# =============================================== #
+legend_size = 12
+
+#========================================================================================================= BDT 1
+# First do signal=(nue+antinue) and background=(the rest)
+
+print('\n\033[1m ------- BDT 1, signal=(antinue), background=(the rest) \033[0m')
+
+#==================== #
+#      OPEN FILE      #
+#==================== #
+
 
 KINE_vars = ['kine_reco_Enu', 'kine_reco_add_energy', 'kine_pio_mass', 'kine_pio_flag', 'kine_pio_vtx_dis', 
              'kine_pio_energy_1', 'kine_pio_theta_1', 'kine_pio_phi_1', 'kine_pio_dis_1', 'kine_pio_energy_2', 
@@ -293,234 +308,73 @@ eval_vars = ['truth_isCC', 'truth_nuPdg', 'truth_nuEnergy', 'truth_vtxInside',
              'match_isFC', 'stm_clusterlength', 'match_found', 'stm_eventtype', 
              'stm_lowenergy', 'stm_LM', 'stm_TGM', 'stm_STM', 'stm_FullDead']
 
-# =================== #
-#      FUNCTIONS      #
-# =================== #
+def create_dataframe(file,family):
 
-legend_size = 12
-
-def plot_important_features(features, feature_importances_, number, name):
-    
-    zipped = zip(features, feature_importances_)
-    zipped_sort = sorted(zipped, key = lambda x:x[1], reverse=True)
-    zipped_sort_reduced = zipped_sort[:number]
-    
-    res = [[ i for i, j in zipped_sort_reduced], 
-           [ j for i, j in zipped_sort_reduced]]
-    red_features = res[0]
-    red_importances = res[1]
-    
-    plt.barh(range(len(red_importances)), red_importances, align='center')
-    plt.yticks(np.arange(len(red_features)), red_features)
-    plt.xlabel("Feature importance")
-    plt.ylabel("Top %i features"%(number))
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1)
-    plt.tight_layout()
-    plt.savefig('plots/training_validation_important_features.pdf')
-    
-    return red_features
-
-def create_dataframe(file, family):
-
-    # --- import trees and variables
+    # --- import trees
     T_pot = uproot.open(file)['wcpselection/T_pot']
-    df_pot = T_pot.pandas.df(pot_vars, flatten=False)
-
     T_KINE = uproot.open(file)['wcpselection/T_KINEvars']
-    df_KINE = T_KINE.pandas.df(KINE_vars, flatten=False)
-
     T_BDT = uproot.open(file)['wcpselection/T_BDTvars']
-    df_BDT = T_BDT.pandas.df(BDT_vars, flatten=False)
-            
     T_PFeval = uproot.open(file)['wcpselection/T_PFeval']
-    df_PFeval = T_PFeval.pandas.df(pfeval_vars, flatten=False)
-
     T_eval = uproot.open(file)['wcpselection/T_eval']
+
+    # --- create dataframes
+    df_pot = T_pot.pandas.df(pot_vars, flatten=False)
+    df_KINE = T_KINE.pandas.df(KINE_vars, flatten=False)
+    df_BDT = T_BDT.pandas.df(BDT_vars, flatten=False)
+    df_PFeval = T_PFeval.pandas.df(pfeval_vars, flatten=False)
     df_eval = T_eval.pandas.df(eval_vars, flatten=False)
 
-    # --- merge dataframes        
+    # --- merge dataframes
     df = pd.concat([df_KINE, df_PFeval, df_BDT, df_eval], axis=1)
 
-    # -------------------------------------------------------------------------------------- calculate cos_theta wrt the beam direction
-    
-    T_PFeval_cos_theta = uproot.open(file)['wcpselection/T_PFeval']
-    df_PFeval_cos_theta = T_PFeval_cos_theta.pandas.df("reco_showerMomentum", flatten=False)
-
-    # get vectors
-    v_targ_uboone = [-31387.58422, -3316.402543, -60100.2414]
-    v_shower_direction = [df_PFeval_cos_theta['reco_showerMomentum[0]'],df_PFeval_cos_theta['reco_showerMomentum[1]'],df_PFeval_cos_theta['reco_showerMomentum[2]']]
-
-    # normalise vectors
-    unit_v_targ_uboone = v_targ_uboone / np.linalg.norm(v_targ_uboone)
-    unit_v_shower_direction = v_shower_direction / np.linalg.norm(v_shower_direction)
-
-    # calculate cos theta
-    cos_theta = np.dot(-unit_v_targ_uboone,unit_v_shower_direction)
-
-    df.loc[:,'cos_theta'] = cos_theta
-
-    # -------------------------------------------------------------------------------------- calculate POT
-
-    POT = sum(df_pot.pot_tor875)
-
-    print('   POT = %.2e' % POT)
-
-    # -------------------------------------------------------------------------------------- fix weights
-
-    # --- make sure weights are valid numbers  
-  
+    # --- fix weights
     df.loc[ df['weight_cv']<=0, 'weight_cv' ] = 1
     df.loc[ df['weight_cv']>30, 'weight_cv' ] = 1
     df.loc[ df['weight_cv']==np.nan, 'weight_cv' ] = 1
     df.loc[ df['weight_cv']==np.inf, 'weight_cv' ] = 1
     df.loc[ df['weight_cv'].isna(), 'weight_cv' ] = 1
-
     df.loc[ df['weight_spline']<=0, 'weight_spline' ] = 1
     df.loc[ df['weight_spline']>30, 'weight_spline' ] = 1
     df.loc[ df['weight_spline']==np.nan, 'weight_spline' ] = 1
     df.loc[ df['weight_spline']==np.inf, 'weight_spline' ] = 1
     df.loc[ df['weight_spline'].isna(), 'weight_spline'] = 1
 
+    # --- calculate cos_theta wrt the beam direction
+    T_PFeval_cos_theta = uproot.open(file)['wcpselection/T_PFeval']
+    df_PFeval_cos_theta = T_PFeval_cos_theta.pandas.df("reco_showerMomentum", flatten=False)
+    v_targ_uboone = [-31387.58422, -3316.402543, -60100.2414]
+    v_shower_direction = [df_PFeval_cos_theta['reco_showerMomentum[0]'],df_PFeval_cos_theta['reco_showerMomentum[1]'],df_PFeval_cos_theta['reco_showerMomentum[2]']]
+    unit_v_targ_uboone = v_targ_uboone / np.linalg.norm(v_targ_uboone)
+    unit_v_shower_direction = v_shower_direction / np.linalg.norm(v_shower_direction)
+    cos_theta = np.dot(-unit_v_targ_uboone,unit_v_shower_direction)
+    df.loc[:,'cos_theta'] = cos_theta
+
+    # --- calculate POT
+    POT = sum(df_pot.pot_tor875)
+
     # --- calculate weight
-
-    if(family=='NUE'): W_ = 1
-    elif(family=='MC'): W_ = 1 #POT/POT_NUE
-
-    print('   POT_NUE/POT = %.2e' % W_)
-
+    POT_goal = 1e+22
+    W_ = 1#POT_goal/POT # maybe it's better if it's =1
     df.loc[:,'weight_genie'] = df['weight_cv']*df['weight_spline']
-    df.loc[:,'weight'] = 1 #[W_]*df.shape[0]*df['weight_genie']
+    df.loc[:,'weight'] = [W_]*df.shape[0]*df['weight_genie']
 
-    # -------------------------------------------------------------------------------------- intrinsuc nue/overlay tag
-
-    # variable created to classify signal and background dataframes
-
+    # --- create label
     if(family=='NUE'): df.loc[:,'original_file'] = 0
     elif(family=='MC'): df.loc[:,'original_file'] = 1
 
+    # --- delete dataframes to free some memory
+    del df_pot
+    del df_KINE
+    del df_BDT 
+    del df_PFeval 
+    del df_eval
+    del df_PFeval_cos_theta
+
     return df, POT
-
-#==================== #
-#      OPEN FILE      #
-#==================== #
-
-print('\n\033[1mCreating dataframe for intrinsic nue...\033[0m')
-df_intrinsic_nue, POT_NUE = create_dataframe("~/Desktop/wirecell_marina/rootfiles/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root",'NUE')
-print('   Sum of Weights = %.2e' % sum(df_intrinsic_nue.weight))
-
-print('\n\033[1mCreating dataframe for overlay...\033[0m')
-df_overlay, POT_MC = create_dataframe("~/Desktop/nu_overlay_run2.root",'MC')
-print('   Sum of Weights = %.2e' % sum(df_overlay.weight))
-
-df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
-
-extra_variables = ['cos_theta'] # variables that were calculated
-
-#===================================================== #
-#       DEFINE DATAFRAMS FOR SIGNAL AND BACKGROUD      #
-# ==================================================== #
-
-# -------------------------------------------------------------------------------------
-print('\n\033[1mCreating signal and background dataframes...\033[0m')
-
-# signal = nue
-df_nuebar = df[df.truth_nuPdg==-12] 
-print('   Signal = %s entries'%(len(df_nuebar)))
-print('      from intrinsic nue = %s (%.2f)' % (len(df_nuebar[df_nuebar.original_file==0]), len(df_nuebar[df_nuebar.original_file==0])/len(df_nuebar)))
-print('      from overlay       = %s (%.2f)' % (len(df_nuebar[df_nuebar.original_file==1]), len(df_nuebar[df_nuebar.original_file==1])/len(df_nuebar)))
-print('      sum of the weight: %s (nue) + %s (overlay)' % (sum(df_nuebar[df_nuebar.original_file==0].weight), sum(df_nuebar[df_nuebar.original_file==1].weight)))
-
-#print(df_nuebar)
-
-# background = everything else
-df_notnuebar = df[df.truth_nuPdg!=-12]
-print('\n   Background = %s entries'%(len(df_notnuebar)))
-print('      from intrinsic nue = %s (%.2f)' % (len(df_notnuebar[df_notnuebar.original_file==0]), len(df_notnuebar[df_notnuebar.original_file==0])/len(df_notnuebar)))
-print('      from overlay       = %s (%.2f)' % (len(df_notnuebar[df_notnuebar.original_file==1]), len(df_notnuebar[df_notnuebar.original_file==1])/len(df_notnuebar)))
-print('      sum of the weight: %s (nue) + %s (overlay)' % (sum(df_notnuebar[df_notnuebar.original_file==0].weight), sum(df_notnuebar[df_notnuebar.original_file==1].weight)))
-
-#print(df_notnuebar)
-
-# -------------------------------------------------------------------------------------
-print('\n\033[1mResizing background dataframe...\033[0m')
-
-df_notnuebar = shuffle(df_notnuebar).reset_index(drop=True) 
-df_notnuebar = df_notnuebar.head(len(df_nuebar))
-print('   Background = %s entries'%(len(df_notnuebar)))
-print('      from intrinsic nue = %s (%.2f)' % (len(df_notnuebar[df_notnuebar.original_file==0]), len(df_notnuebar[df_notnuebar.original_file==0])/len(df_notnuebar)))
-print('      from overlay       = %s (%.2f)' % (len(df_notnuebar[df_notnuebar.original_file==1]), len(df_notnuebar[df_notnuebar.original_file==1])/len(df_notnuebar)))
-print('      sum of the weight: %s (nue) + %s (overlay)' % (sum(df_notnuebar[df_notnuebar.original_file==0].weight), sum(df_notnuebar[df_notnuebar.original_file==1].weight)))
-
-#print(df_notnuebar)
-
-
-# -------------------------------------------------------------------------------------
-print('\n\033[1mFixing weights...\033[0m')
-
-weight_sum_nue_before = sum(df_intrinsic_nue.weight)
-weight_sum_mc_before = sum(df_overlay.weight)
-
-# create subsets for events coming from each of
-df_subset_nue_nuebar = df_nuebar[df_nuebar.original_file==0]
-df_subset_nue_notnuebar = df_notnuebar[df_notnuebar.original_file==0]
-
-df_subset_mc_nuebar = df_nuebar[df_nuebar.original_file==1]
-df_subset_mc_notnuebar = df_notnuebar[df_notnuebar.original_file==1]
-
-# sum weights for the subsets after resizing background
-weight_sum_nue_after = sum(df_subset_nue_nuebar.weight) + sum(df_subset_nue_notnuebar.weight)
-weight_sum_mc_after = sum(df_subset_mc_nuebar.weight) + sum(df_subset_mc_notnuebar.weight)
-
-print('   Weights before resizing: \n      intrinsic nue = %s \n      overlay = %s' % ( weight_sum_nue_before , weight_sum_mc_before ) )
-print('   Weights after resizing: \n      intrinsic nue = %s \n      overlay = %s' % ( weight_sum_nue_after , weight_sum_mc_after ) )
-
-ratio_nue = weight_sum_nue_after/weight_sum_nue_before
-ratio_mc = weight_sum_mc_after/weight_sum_mc_before
-
-print('   Ratio nue = %s' % ratio_nue)
-print('   Ratio mc = %s' % ratio_mc)
-
-# update weights
-df_notnuebar.loc[df_notnuebar['original_file']==0, 'weight'] = df_notnuebar['weight']*ratio_nue
-df_notnuebar.loc[df_notnuebar['original_file']==1, 'weight'] = df_notnuebar['weight']*ratio_mc
-
-df_nuebar.loc[df_nuebar['original_file']==0, 'weight'] = df_nuebar['weight']*ratio_nue
-df_nuebar.loc[df_nuebar['original_file']==1, 'weight'] = df_nuebar['weight']*ratio_mc
-
-#print(df_nuebar)
-
-# -------------------------------------------------------------------------------------
-
-df_nuebar.drop(columns=['original_file'])
-df_notnuebar.drop(columns=['original_file'])
-
-# ========================================================= #
-#      CREATE VALIDATION, TESTING AND TRAINING SAMPLES      #
-# ========================================================= #
-
-# --- merge variables together
-# --- # BDT_variables[:-2] means all variables in the list minus ['cosmict_flag', 'numu_cc_flag']
-variables_w = extra_variables + KINE_vars + BDT_vars + ['weight']
-variables   = extra_variables + KINE_vars + BDT_vars
-
-def split_train_val_test(df,tag):
-    
-    # test = 1/3 of the sample
-    # validation = 1/6 of the sample
-    # training = 1/2 of the sample
-    
-    df_test = df.iloc[(df.index % 3 == 0).astype(bool)].reset_index(drop=True)
-    df_train = df.iloc[(df.index % 3 != 0).astype(bool)].reset_index(drop=True)
-    
-    df_val = df_train.iloc[(df_train.index % 4 == 0).astype(bool)].reset_index(drop=True)
-    df_train = df_train.iloc[(df_train.index % 4 != 0).astype(bool)].reset_index(drop=True)
-    
-    return df_train, df_val, df_test
 
 def Gen(df):
     
-    # Generic Nu selection (reco)
-    
+    # --- generic neutrino selection (reco)    
     df_ = df[(df.match_found == 1) & 
              (df.stm_eventtype != 0) &
              (df.stm_lowenergy == 0) &
@@ -530,118 +384,6 @@ def Gen(df):
              (df.stm_FullDead == 0) &
              (df.stm_clusterlength > 15)]
     return df_
-
-# --- create training, validation and testing samples from DF
-# --- it is only done for events that pass the generic Nu selection
-df_nuebar_train, df_nuebar_val, df_nuebar_test = split_train_val_test(Gen(df_nuebar), 'Signal')
-df_notnuebar_train, df_notnuebar_val, df_notnuebar_test = split_train_val_test(Gen(df_notnuebar), 'Background')
-
-# ------------------------------------------------------------------------------------------
-# --- training sample
-
-# shuffle and reorganise for the variables in variables_w
-# shuffles entries, but columns remain the same position
-df_sig_train = shuffle(df_nuebar_train).reset_index(drop=True)[variables_w] # shuffle and keep only variables in the list variables_w
-df_bkg_train = shuffle(df_notnuebar_train).reset_index(drop=True)[variables_w]
-
-# add extra column, 1=signal and 0=background
-df_sig_train.loc[:,'Y'] = [1]*df_sig_train.shape[0] 
-df_bkg_train.loc[:,'Y'] = [0]*df_bkg_train.shape[0]
-
-df_train = shuffle(pd.concat([df_sig_train, df_bkg_train]), random_state=1).reset_index(drop=True)
-
-x_train = df_train[df_train.columns[:-2]] # Removes weight and Y for training
-y_train = df_train['Y']
-w_train = df_train['weight']
-
-# ------------------------------------------------------------------------------------------
-# --- validation sample
-df_sig_val = shuffle(df_nuebar_val).reset_index(drop=True)[variables_w]
-df_bkg_val = shuffle(df_notnuebar_val).reset_index(drop=True)[variables_w]
-
-df_sig_val.loc[:,'Y'] = [1]*df_sig_val.shape[0] # add extra column, 1=signal and 0=background
-df_bkg_val.loc[:,'Y'] = [0]*df_bkg_val.shape[0]
-
-df_val = shuffle(pd.concat([df_sig_val, df_bkg_val]), random_state=1).reset_index(drop=True)
-
-x_val = df_val[df_val.columns[:-2]] # Removes weight and Y for training
-y_val = df_val['Y']
-w_val = df_val['weight']
-
-# ------------------------------------------------------------------------------------------
-# --- test sample
-df_sig_test = shuffle(df_nuebar_test).reset_index(drop=True)[variables_w]
-df_bkg_test = shuffle(df_notnuebar_test).reset_index(drop=True)[variables_w]
-
-df_sig_test.loc[:,'Y'] = [1]*df_sig_test.shape[0] # add extra column, 1=signal and 0=background
-df_bkg_test.loc[:,'Y'] = [0]*df_bkg_test.shape[0]
-
-df_test = shuffle(pd.concat([df_sig_test, df_bkg_test]), random_state=1).reset_index(drop=True)
-
-x_test = df_test[df_test.columns[:-2]] # Removes weight and Y for training
-y_test = df_test['Y']
-w_test = df_test['weight']
-
-# ====================== #
-#      BDT TRAINING      #
-# ====================== #
-
-print('\n\033[1mStart training...\033[0m')
-
-use_label_encoder=False # removes warning message because XGBClassifier won't be used in future releases
-
-model = XGBClassifier(n_estimators=550,                   # maximum number of rounds
-                      max_depth=3,                        # number of cuts
-                      scale_pos_weight = 5,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
-                      learning_rate=0.1,                  # steps
-                      objective='binary:logistic',        # bdt score 0-1
-                      colsample_bytree=0.8)
-
-                                                                # understand the parameters: https://xgboost.readthedocs.io/en/latest/python/python_api.html
-model.fit(x_train,                                              # feature matrix
-          y_train,                                              # labels (Y=1 signal, Y=0 background)
-          sample_weight=w_train,                                # instance weights
-          eval_set = [(x_train,y_train), (x_val,y_val)],        # a list of (X,y) tuple pairs to use as validation sets ---> validation_0=train, validation_1=validation
-          sample_weight_eval_set = [w_train, w_val],            # list of arrays storing instances weights for the i-th validation set
-          eval_metric = ['auc', 'error'],                       # list of parameters under eval_metric: https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
-          early_stopping_rounds=300,                            # validation metric needs to improve at least once in every early_stopping_rounds round(s)
-          verbose=100)
-
-results = model.evals_result()                            # takes the results from the BDT training above
-n_estimators = len(results['validation_0']['error'])      # number of rounds used for the BDT training
-auc_train = results['validation_0']['auc']                # subsample: auc for training
-auc_val = results['validation_1']['auc']                  # subsample: auc for validation
-error_train = results['validation_0']['error']            # subsample: error for training
-error_val = results['validation_1']['error']              # subsample: error for validation
-
-plt.figure(figsize=(15,5))
-
-# --- plot auc for training and validation
-plt.subplot(121)
-plt.plot(range(0,n_estimators), auc_train, c='blue', label='train')
-plt.plot(range(0,n_estimators), auc_val, c='orange', label='validation')
-ymin = min(min(auc_train),min(auc_val))
-ymax = max(max(auc_train),max(auc_val))
-plt.ylabel('AUC')
-plt.ylim(ymin, ymax)
-plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
-plt.legend(loc='best', prop={'size': legend_size})
-
-# --- plot error for training and validation
-plt.subplot(122)
-plt.plot(range(0,n_estimators), error_train, c='blue', label='train')
-plt.plot(range(0,n_estimators), error_val, c='orange', label='validation')
-ymin = min(min(error_train),min(error_val))
-ymax = max(max(error_train),max(error_val))
-plt.ylabel('Classification Error')
-plt.ylim(ymin, ymax)
-plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
-plt.legend(loc='best', prop={'size': legend_size})
-plt.savefig('plots/training_validation.pdf')
-
-plt.figure(figsize=(8,5))
-
-list_feat = plot_important_features(variables_w[:-2], model.feature_importances_, 16, 'NC') # number not greater than the number of variables
 
 def plot_important_features(features, feature_importances_, number, name):
     
@@ -664,6 +406,208 @@ def plot_important_features(features, feature_importances_, number, name):
     plt.savefig('plots/training_validation_important_features.pdf')
     
     return red_features
+
+def printtitle(string):
+    print('\n\033[1m%s \033[0m\n' % string)
+
+# --- open files
+
+printtitle('Open files')
+filename_nue = '~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root'
+filename_overlay = '~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_overlay_run1.root'
+
+print('intrinsic nue: %s' % filename_nue)
+print('overlay:       %s\n' % filename_overlay)
+
+df_intrinsic_nue, POT_NUE = create_dataframe(filename_nue,'NUE')
+df_overlay, POT_MC = create_dataframe(filename_overlay,'MC')
+
+# --- merge dataframes
+df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
+POT_MERGED = POT_NUE + POT_MC
+
+#print('                    Entries       POT           Tot Weight')
+print('Intrinsic Nue       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_intrinsic_nue),POT_NUE,sum(df_intrinsic_nue.weight)))
+print('Overlay             entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_overlay),POT_MC,sum(df_overlay.weight)))
+print('Merged sample       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df), POT_MERGED, sum(df.weight)))
+
+
+#===================================================== #
+#       DEFINE DATAFRAMS FOR SIGNAL AND BACKGROUD      #
+# ==================================================== #
+
+printtitle('Define dataframes and apply cuts')
+
+# --- create signal and background
+df_signal = df[(df.truth_nuPdg==-12) | (df.truth_nuPdg==12)]
+df_background = df[(df.truth_nuPdg!=-12) & (df.truth_nuPdg!=-12)]
+print('Number of entries                     signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+
+# --- apply the generic neutrino selection
+apply_gen_nu_selection = True
+if(apply_gen_nu_selection):
+    df_signal = Gen(df_signal)
+    df_background = Gen(df_background)
+    print('Apply generic neutrino selection      signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+
+# --- resize background
+apply_resize = True
+if(apply_resize):
+    if(len(df_signal)>len(df_background)):
+        df_signal = shuffle(df_signal).reset_index(drop=True)
+        df_signal = df_signal.iloc[:len(df_background),:]
+    else:
+        df_background = shuffle(df_background).reset_index(drop=True)
+        df_background = df_background.iloc[:len(df_signal),:]
+    print('Resize samples                        signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+
+# --- delete label
+df_signal.drop('original_file',axis='columns',inplace=True)
+df_background.drop('original_file',axis='columns',inplace=True)
+
+# ========================================================= #
+#      CREATE VALIDATION, TESTING AND TRAINING SAMPLES      #
+# ========================================================= #
+
+printtitle('Create validation, testing and training samples')
+
+# --- merge variables together
+variables_w = ['cos_theta'] + KINE_vars + BDT_vars + ['weight']
+variables   = ['cos_theta'] + KINE_vars + BDT_vars
+
+def split_train_val_test(df,tag):
+    
+    # test = 1/3 of the sample
+    # validation = 1/6 of the sample
+    # training = 1/2 of the sample
+    
+    df_test = df.iloc[(df.index % 3 == 0).astype(bool)].reset_index(drop=True)
+    df_train = df.iloc[(df.index % 3 != 0).astype(bool)].reset_index(drop=True)
+    
+    df_val = df_train.iloc[(df_train.index % 4 == 0).astype(bool)].reset_index(drop=True)
+    df_train = df_train.iloc[(df_train.index % 4 != 0).astype(bool)].reset_index(drop=True)
+    
+    return df_train, df_val, df_test
+
+# --- create training, validation and testing samples from df
+df_signal_train, df_signal_val, df_signal_test = split_train_val_test(df_signal,'Signal')
+df_background_train, df_background_val, df_background_test = split_train_val_test(df_background,'Background')
+
+# ------------------------------------------------------------------------------
+# --- training sample
+
+df_sig_train = shuffle(df_signal_train).reset_index(drop=True)[variables_w]
+df_bkg_train = shuffle(df_background_train).reset_index(drop=True)[variables_w]
+
+df_sig_train.loc[:,'Y'] = 1 # add extra column, 1=signal, 0=background
+df_bkg_train.loc[:,'Y'] = 0
+
+df_train = shuffle(pd.concat([df_sig_train,df_bkg_train]), random_state=1).reset_index(drop=True)
+
+x_train = df_train[df_train.columns[:-2]] # Removes weight and Y for the training
+y_train = df_train['Y']
+w_train = df_train['weight']
+
+# ------------------------------------------------------------------------------
+# --- validation sample
+
+df_sig_val = shuffle(df_signal_val).reset_index(drop=True)[variables_w]
+df_bkg_val = shuffle(df_background_val).reset_index(drop=True)[variables_w]
+
+df_sig_val.loc[:,'Y'] = 1 # add extra column, 1=signal, 0=background
+df_bkg_val.loc[:,'Y'] = 0
+
+df_val = shuffle(pd.concat([df_sig_val,df_bkg_val]), random_state=1).reset_index(drop=True)
+
+x_val = df_val[df_train.columns[:-2]] # Removes weight and Y for the training
+y_val = df_val['Y']
+w_val = df_val['weight']
+
+# ------------------------------------------------------------------------------
+# --- test sample
+
+df_sig_test = shuffle(df_signal_test).reset_index(drop=True)[variables_w]
+df_bkg_test = shuffle(df_background_test).reset_index(drop=True)[variables_w]
+
+df_sig_test.loc[:,'Y'] = 1 # add extra column, 1=signal and 0=background
+df_bkg_test.loc[:,'Y'] = 0
+
+df_test = shuffle(pd.concat([df_sig_test, df_bkg_test]), random_state=1).reset_index(drop=True)
+
+x_test = df_test[df_test.columns[:-2]] # Removes weight and Y for training
+y_test = df_test['Y']
+w_test = df_test['weight']
+
+# ------------------------------------------------------------------------------
+print('                 Signal             Background')
+print('Training:        %.2e           %.2e' % (len(df_sig_train),len(df_bkg_train)))
+print('Validation:      %.2e           %.2e' % (len(df_sig_val),len(df_bkg_val)))
+print('Testing:         %.2e           %.2e' % (len(df_sig_test),len(df_bkg_test)))
+
+# ====================== #
+#      BDT TRAINING      #
+# ====================== #
+
+printtitle('Start BDT 1 training')
+
+use_label_encoder=False # removes warning message because XGBClassifier won't be used in future releases
+
+print('Make sure scale_pos_weight = %f' % (sum(df_bkg_train.weight) / sum(df_sig_train.weight)))
+
+model = XGBClassifier(n_estimators=550,                   # maximum number of rounds    300
+                      max_depth=3,                        # number of cuts              6
+                      scale_pos_weight = 1,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
+                      learning_rate=0.1,                  # steps   0.05
+                      objective='binary:logistic',        # bdt score 0-1
+                      colsample_bytree=0.8)
+
+                                                                # understand the parameters: https://xgboost.readthedocs.io/en/latest/python/python_api.html
+model.fit(x_train,                                              # feature matrix
+          y_train,                                              # labels (Y=1 signal, Y=0 background)
+          sample_weight=w_train,                                # instance weights
+          eval_set = [(x_train,y_train), (x_val,y_val)],        # a list of (X,y) tuple pairs to use as validation sets ---> validation_0=train, validation_1=validation
+          sample_weight_eval_set = [w_train, w_val],            # list of arrays storing instances weights for the i-th validation set
+          eval_metric = ['auc', 'error'],                       # list of parameters under eval_metric: https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
+          early_stopping_rounds=100,                            # validation metric needs to improve at least once in every early_stopping_rounds round(s)
+          verbose=100)
+
+results = model.evals_result()                            # takes the results from the BDT training above
+n_estimators = len(results['validation_0']['error'])      # number of rounds used for the BDT training
+auc_train = results['validation_0']['auc']                # subsample: auc for training
+auc_val = results['validation_1']['auc']                  # subsample: auc for validation
+error_train = results['validation_0']['error']            # subsample: error for training
+error_val = results['validation_1']['error']              # subsample: error for validation
+
+plt.figure(figsize=(15,5))
+
+# --- plot auc for training and validation
+plt.subplot(121)
+plt.plot(range(0,n_estimators), auc_train, c='blue', label='train')
+plt.plot(range(0,n_estimators), auc_val, c='orange', label='validation')
+ymin = min(min(auc_train),min(auc_val))
+ymax = max(max(auc_train),max(auc_val))
+plt.ylabel('AUC')
+plt.xlabel('Estimators')
+plt.ylim(ymin, ymax)
+plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
+plt.legend(loc='best', prop={'size': legend_size})
+
+# --- plot error for training and validation
+plt.subplot(122)
+plt.plot(range(0,n_estimators), error_train, c='blue', label='train')
+plt.plot(range(0,n_estimators), error_val, c='orange', label='validation')
+ymin = min(min(error_train),min(error_val))
+ymax = max(max(error_train),max(error_val))
+plt.ylabel('Classification Error')
+plt.xlabel('Estimators')
+plt.ylim(ymin, ymax)
+plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
+plt.legend(loc='best', prop={'size': legend_size})
+plt.savefig('plots/training_validation.pdf')
+
+plt.figure(figsize=(8,5))
+
+list_feat = plot_important_features(variables_w[:-2], model.feature_importances_, 16, 'NC') # number not greater than the number of variables
 
 #===========================================================================================================================================================================================
 

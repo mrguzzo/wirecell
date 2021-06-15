@@ -4,6 +4,21 @@
 # - gridsearch (take a look at the end of the tutorial) -- optimise the cuts
 # - cut down variables (using the correltion matrix for it)
 
+
+# ================= #
+#     TO-DO LIST    #
+# ================= #
+
+# [ok] merge intrinsic nue and overlay samples
+# [ok] cut down the signal and background to the same number of entries
+# [ok] implement grid search
+# [ok] cut down variables
+# [  ] scale_pos_weight = ratio between sum of the weights, instead of the number of entries
+# [  ] I don't need n_estimators if I'm using early_stopping_rounds
+# [ok] check the overlay POT, it should be ~e20
+# [  ] use variables k_something ?
+# [  ] include particle ID
+
 # ================= #
 #     INCLUDES      #
 # ================= #
@@ -20,6 +35,7 @@ from sklearn.model_selection import GridSearchCV, train_test_split, cross_val_sc
 from sklearn.utils import shuffle
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, roc_curve, roc_auc_score, accuracy_score, f1_score
 
+import xgboost
 from xgboost import XGBClassifier
 
 #================================================ #
@@ -212,47 +228,47 @@ BDT_variab_all = ['cosmic_n_solid_tracks', 'cosmic_energy_main_showers',
                   'lol_3_energy', 'lol_3_shower_main_length', 
                   'lol_3_n_out', 'lol_3_n_sum',
                   # -----------------------------------------------
-                  'cosmict_2_particle_type', 'cosmict_2_n_muon_tracks',
-                  'cosmict_2_flag_inside', 'cosmict_2_angle_beam',
-                  'cosmict_2_flag_dir_weak', 'cosmict_2_dQ_dx_end',
-                  'cosmict_2_dQ_dx_front', 'cosmict_2_theta',
-                  'cosmict_2_phi', 'cosmict_2_valid_tracks',
+                  #'cosmict_2_particle_type', 'cosmict_2_n_muon_tracks',
+                  #'cosmict_2_flag_inside', 'cosmict_2_angle_beam',
+                  #'cosmict_2_flag_dir_weak', 'cosmict_2_dQ_dx_end',
+                  #'cosmict_2_dQ_dx_front', 'cosmict_2_theta',
+                  #'cosmict_2_phi', 'cosmict_2_valid_tracks',
                   # -----------------------------------------------
-                  'cosmict_3_flag_inside',
-                  'cosmict_3_angle_beam', 'cosmict_3_flag_dir_weak',
-                  'cosmict_3_dQ_dx_end', 'cosmict_3_dQ_dx_front',
-                  'cosmict_3_theta', 'cosmict_3_phi',
-                  'cosmict_3_valid_tracks', 
+                  #'cosmict_3_flag_inside',
+                  #'cosmict_3_angle_beam', 'cosmict_3_flag_dir_weak',
+                  #'cosmict_3_dQ_dx_end', 'cosmict_3_dQ_dx_front',
+                  #'cosmict_3_theta', 'cosmict_3_phi',
+                  #'cosmict_3_valid_tracks', 
                   # -----------------------------------------------
-                  'cosmict_4_flag_inside', 'cosmict_4_angle_beam',
+                  #'cosmict_4_flag_inside', 'cosmict_4_angle_beam',
                   # -----------------------------------------------
-                  'cosmict_5_flag_inside', 'cosmict_5_angle_beam', 
+                  #'cosmict_5_flag_inside', 'cosmict_5_angle_beam', 
                   # -----------------------------------------------
-                  'cosmict_6_flag_dir_weak', 'cosmict_6_flag_inside',
-                  'cosmict_6_angle', 
+                  #'cosmict_6_flag_dir_weak', 'cosmict_6_flag_inside',
+                  #'cosmict_6_angle', 
                   # -----------------------------------------------
-                  'cosmict_7_flag_sec', 'cosmict_7_n_muon_tracks',
-                  'cosmict_7_flag_inside', 'cosmict_7_angle_beam',
-                  'cosmict_7_flag_dir_weak', 'cosmict_7_dQ_dx_end',
-                  'cosmict_7_dQ_dx_front', 'cosmict_7_theta',
-                  'cosmict_7_phi', 
+                  #'cosmict_7_flag_sec', 'cosmict_7_n_muon_tracks',
+                  #'cosmict_7_flag_inside', 'cosmict_7_angle_beam',
+                  #'cosmict_7_flag_dir_weak', 'cosmict_7_dQ_dx_end',
+                  #'cosmict_7_dQ_dx_front', 'cosmict_7_theta',
+                  #'cosmict_7_phi', 
                   # -----------------------------------------------
-                  'cosmict_8_flag_out', 'cosmict_8_muon_length',
-                  'cosmict_8_acc_length',
+                  #'cosmict_8_flag_out', 'cosmict_8_muon_length',
+                  #'cosmict_8_acc_length',
                   # -----------------------------------------------
                   'numu_cc_3_particle_type',
                   'numu_cc_3_max_length', 'numu_cc_3_track_length',
                   'numu_cc_3_max_length_all', 'numu_cc_3_max_muon_length',
                   'numu_cc_3_n_daughter_all', 
                   # -----------------------------------------------                                      
-                  'pio_2_score', 'sig_1_score',
-                  'sig_2_score', 'stw_2_score',
-                  'stw_3_score', 'stw_4_score',
-                  'br3_3_score', 'br3_5_score',
-                  'br3_6_score', 'lol_1_score',
-                  'lol_2_score', 'tro_1_score',
-                  'tro_2_score', 'tro_4_score',
-                  'tro_5_score', 'cosmict_10_score',
+                  #'pio_2_score', 'sig_1_score',
+                  #'sig_2_score', 'stw_2_score',
+                  #'stw_3_score', 'stw_4_score',
+                  #'br3_3_score', 'br3_5_score',
+                  #'br3_6_score', 'lol_1_score',
+                  #'lol_2_score', 'tro_1_score',
+                  #'tro_2_score', 'tro_4_score',
+                  #'tro_5_score', 'cosmict_10_score',
                   'numu_1_score', 'numu_2_score',
                   'numu_score', 'nue_score',
                   'cosmict_flag', 'numu_cc_flag']  # Last 2 or 4 variables should not be included in training
@@ -315,7 +331,7 @@ def plot_important_features(features, feature_importances_, number, name):
     plt.ylabel("Top %i features"%(number))
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1)
     plt.tight_layout()
-    plt.savefig('plots/training_validation_important_features.pdf')
+    plt.savefig('plots/bdt_important_features.pdf')
     
     return red_features
 
@@ -365,7 +381,7 @@ def create_dataframe(file, family):
     # ------------------- #
 
     POT = sum(df_pot.pot_tor875)
-    print('POT = %.2e' % POT)
+    #print('POT = %.2e' % POT)
 
     # ----------------- #
     #    fix weights    #
@@ -389,7 +405,7 @@ def create_dataframe(file, family):
     if(family=='NUE'): W_ = 1
     elif(family=='MC'): W_ = 1#POT/POT_NUE
 
-    print('W_ = %.2e' % W_)
+    #print('W_ = %.2e' % W_)
 
     df.loc[:,'weight_genie'] = df['weight_cv']*df['weight_spline']
     df.loc[:,'weight'] = [W_]*df.shape[0]*df['weight_genie']
@@ -410,123 +426,6 @@ def create_dataframe(file, family):
     del df_eval
 
     return df, POT
-
-#==================== #
-#      OPEN FILE      #
-#==================== #
-
-print('\n\033[1mCreating dataframe for intrinsic nue...\033[0m\n')
-df_intrinsic_nue, POT_NUE = create_dataframe("~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root",'NUE')
-print('Sum of Weights = %.2e' % sum(df_intrinsic_nue.weight))
-print('Number of entries = %.2e' % len(df_intrinsic_nue))
-
-print('\n\033[1mCreating dataframe for overlay...\033[0m\n')
-df_overlay, POT_MC = create_dataframe("~/Desktop/organised_phd/wirecell/BDT/files/nu_overlay_run2.root",'MC')
-print('Sum of Weights = %.2e' % sum(df_overlay.weight))
-print('Number of entries = %.2e' % len(df_overlay))
-
-print('\n\033[1mMerging intrinsic nue and overlay samples...\033[0m\n')
-df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
-print('Number of entries after merging: %.2e  (nue = %.2f    overlay = %.2f)' % (len(df),len(df_intrinsic_nue)/len(df),len(df_overlay)/len(df)))
-
-extra_variables = ['cos_theta'] # variables that were calculated
-
-#===================================================== #
-#       DEFINE DATAFRAMS FOR SIGNAL AND BACKGROUD      #
-# ==================================================== #
-
-def print_summary(df,label):
-
-    nentries = len(df)
-    
-    nentries_intrinsic = len(df[df.original_file==0])
-    percentage_intrinsic = nentries_intrinsic/nentries
-
-    nentries_mc = len(df[df.original_file==1])
-    percentage_mc = nentries_mc/nentries
-
-    weight_intrinsic = sum(df[df.original_file==0].weight)
-    weight_mc = sum(df[df.original_file==1].weight)
-    weight = weight_intrinsic + weight_mc
-
-    print('\n%s' % label)
-    print('Total entries: %.2e           nue = %.2e (%.2f)            overlay = %.2e (%.2f)' % (nentries,nentries_intrinsic,percentage_intrinsic,nentries_mc,percentage_mc))
-    print('Total Weight:  %.2e           nue = %.2e                   overlay = %.2e' % (weight, weight_intrinsic, weight_mc))
-
-# -------------------------------------------------------------------------------------
-print('\n\033[1mCreating signal and background dataframes...\033[0m')
-
-# signal = nue
-df_nuebar = df[df.truth_nuPdg==-12] 
-print_summary(df_nuebar,"Signal")
-
-# background
-df_notnuebar = df[df.truth_nuPdg!=-12]
-print_summary(df_notnuebar,"Background before resizing")
-
-# calculate the sum of the weights to fix them after resizing the background dataframe
-# original weights = signal + background
-original_w_nue     = sum(df_nuebar[df_nuebar.original_file==0].weight) + sum(df_notnuebar[df_notnuebar.original_file==0].weight)
-original_w_overlay = sum(df_nuebar[df_nuebar.original_file==1].weight) + sum(df_notnuebar[df_notnuebar.original_file==1].weight)
-
-# -------------------------------------------------------------------------------------
-print('\n\033[1mResizing background dataframe...\033[0m')
-
-nentries_new_bkg = int( 1 * len(df_nuebar) ) # entries_bkg = prop * entries_sig
-
-df_notnuebar = shuffle(df_notnuebar).reset_index(drop=True) 
-df_notnuebar = df_notnuebar.head(nentries_new_bkg)
-
-print_summary(df_notnuebar,"Background after resizing")
-
-# calculate the sum of the weights to fix them after resizing the background dataframe
-# final weights = signal + background
-final_w_nue     = sum(df_nuebar[df_nuebar.original_file==0].weight) + sum(df_notnuebar[df_notnuebar.original_file==0].weight)
-final_w_overlay = sum(df_nuebar[df_nuebar.original_file==1].weight) + sum(df_notnuebar[df_notnuebar.original_file==1].weight)
-
-# print particle id summary for the background sample
-n_nue = len(df_notnuebar[df_notnuebar['truth_nuPdg']==12])
-n_nuebar = len(df_notnuebar[df_notnuebar['truth_nuPdg']==-12])
-print('\nParticle ID summary:')
-print('nue       = %.0f' % len(df_notnuebar[df_notnuebar['truth_nuPdg']==12]))
-print('nuebar    = %.0f' % len(df_notnuebar[df_notnuebar['truth_nuPdg']==-12]))
-
-'''
-# -------------------------------------------------------------------------------------
-print('\n\033[1mFixing weights...\033[0m')
-
-# calculate the ratio between the sum of the weights before and after resizing the background
-ratio_nue = final_w_nue/original_w_nue
-ratio_overlay = final_w_overlay/original_w_overlay
-
-print('Weights before resizing:     nue = %.2e     overlay = %.2e' % (original_w_nue, original_w_overlay))
-print('Weights after resizing:      nue = %.2e     overlay = %.2e' % (final_w_nue, final_w_overlay))
-print('Ratio:                       nue = %.2e     overlay = %.2e' % (ratio_nue, ratio_overlay))
-
-# update weights
-df_notnuebar.loc[df_notnuebar['original_file']==0, 'weight'] = df_notnuebar['weight']*ratio_nue
-df_notnuebar.loc[df_notnuebar['original_file']==1, 'weight'] = df_notnuebar['weight']*ratio_overlay
-
-df_nuebar.loc[df_nuebar['original_file']==0, 'weight'] = df_nuebar['weight']*ratio_nue
-df_nuebar.loc[df_nuebar['original_file']==1, 'weight'] = df_nuebar['weight']*ratio_overlay
-
-print('Weights: fixed')
-'''
-
-# -------------------------------------------------------------------------------------
-
-# delete column original_file
-df_nuebar.drop(columns=['original_file'])
-df_notnuebar.drop(columns=['original_file'])
-
-# ========================================================= #
-#      CREATE VALIDATION, TESTING AND TRAINING SAMPLES      #
-# ========================================================= #
-
-# --- merge variables together
-# --- # BDT_variables[:-2] means all variables in the list minus ['cosmict_flag', 'numu_cc_flag']
-variables_w = extra_variables + KINE_vars + BDT_vars + ['weight']
-variables   = extra_variables + KINE_vars + BDT_vars
 
 def split_train_val_test(df,tag):
     
@@ -556,10 +455,159 @@ def Gen(df):
              (df.stm_clusterlength > 15)]
     return df_
 
+def printtitle(string):
+    print('\n\033[1m%s \033[0m\n' % string)
+
+def print_summary(df,label):
+
+    nentries = len(df)
+    
+    nentries_intrinsic = len(df[df.original_file==0])
+    percentage_intrinsic = nentries_intrinsic/nentries
+
+    nentries_mc = len(df[df.original_file==1])
+    percentage_mc = nentries_mc/nentries
+
+    weight_intrinsic = sum(df[df.original_file==0].weight)
+    weight_mc = sum(df[df.original_file==1].weight)
+    weight = weight_intrinsic + weight_mc
+
+    print('\n%s' % label)
+    print('Total entries: %.2e           nue = %.2e (%.2f)            overlay = %.2e (%.2f)' % (nentries,nentries_intrinsic,percentage_intrinsic,nentries_mc,percentage_mc))
+    print('Total Weight:  %.2e           nue = %.2e                   overlay = %.2e' % (weight, weight_intrinsic, weight_mc))
+
+def particle_multiplicity(df):
+
+    # this function is going to calculate the multiplicity
+    # of the daughter particles of a neutrino interaction, it
+    # takes into account both 
+
+    n_neutron = 
+    n_muon =
+    n_kaon = 
+    n_pion = 
+    n_pion0 = 
+    n_proton = 
+    n_gamma = 
+    n_electron = 
+
+    return n_neutron, n_muon, n_kaon, n_pion, n_pion0, n_proton, n_gamma, n_electron
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==================== #
+#      OPEN FILE      #
+#==================== #
+
+printtitle('Open files')
+filename_nue = '~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root'
+filename_overlay = '~/Desktop/organised_phd/wirecell/BDT/files/checkout_prodgenie_numi_overlay_run1.root'
+
+print('intrinsic nue: %s' % filename_nue)
+print('overlay:       %s\n' % filename_overlay)
+
+df_intrinsic_nue, POT_NUE = create_dataframe(filename_nue,'NUE')
+df_overlay, POT_MC = create_dataframe(filename_overlay,'MC')
+
+df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
+POT_MERGED = POT_NUE + POT_MC
+
+extra_variables = ['cos_theta'] # variables that were calculated
+
+print('Intrinsic Nue       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_intrinsic_nue),POT_NUE,sum(df_intrinsic_nue.weight)))
+print('Overlay             entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_overlay),POT_MC,sum(df_overlay.weight)))
+print('Merged sample       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df), POT_MERGED, sum(df.weight)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#===================================================== #
+#       DEFINE DATAFRAMS FOR SIGNAL AND BACKGROUD      #
+# ==================================================== #
+
+printtitle('Creating signal and background dataframes...')
+
+# --- signal and background
+df_nuebar = df[df.truth_nuPdg==-12] 
+df_notnuebar = df[df.truth_nuPdg!=-12]
+print('Number of entries                     signal = %.2e       background = %.2e' % (len(df_nuebar),len(df_notnuebar)))
+
+# --- apply generic neutrino selection
+df_nuebar = Gen(df_nuebar)
+df_notnuebar = Gen(df_notnuebar)
+print('Apply generic neutrino selection      signal = %.2e       background = %.2e' % (len(df_nuebar),len(df_notnuebar)))
+
+# --- resize signal and background
+if(len(df_nuebar)>len(df_notnuebar)):
+    df_nuebar = shuffle(df_nuebar).reset_index(drop=True)
+    df_nuebar = df_nuebar.iloc[:len(df_notnuebar),:]
+else:
+    df_notnuebar = shuffle(df_notnuebar).reset_index(drop=True)
+    df_notnuebar = df_notnuebar.iloc[:len(df_nuebar),:]
+print('Resize samples                        signal = %.2e       background = %.2e' % (len(df_nuebar),len(df_notnuebar)))
+
+# --- delete label
+df_nuebar.drop('original_file',axis='columns',inplace=True)
+df_notnuebar.drop('original_file',axis='columns',inplace=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ========================================================= #
+#      CREATE VALIDATION, TESTING AND TRAINING SAMPLES      #
+# ========================================================= #
+
+# --- merge variables together
+# --- # BDT_variables[:-2] means all variables in the list minus ['cosmict_flag', 'numu_cc_flag']
+variables_w = extra_variables + KINE_vars + BDT_vars[:-2] + ['weight']
+variables   = extra_variables + KINE_vars + BDT_vars[:-2]
+
 # --- create training, validation and testing samples from DF
 # --- it is only done for events that pass the generic Nu selection
-df_nuebar_train, df_nuebar_val, df_nuebar_test = split_train_val_test(Gen(df_nuebar), 'Signal')
-df_notnuebar_train, df_notnuebar_val, df_notnuebar_test = split_train_val_test(Gen(df_notnuebar), 'Background')
+df_nuebar_train, df_nuebar_val, df_nuebar_test = split_train_val_test(df_nuebar, 'Signal')
+df_notnuebar_train, df_notnuebar_val, df_notnuebar_test = split_train_val_test(df_notnuebar, 'Background')
+
+
+
 
 # ------------------------------------------------------------------------------------------
 # --- training sample
@@ -579,6 +627,9 @@ x_train = df_train[df_train.columns[:-2]] # Removes weight and Y for training
 y_train = df_train['Y']
 w_train = df_train['weight']
 
+
+
+
 # ------------------------------------------------------------------------------------------
 # --- validation sample
 df_sig_val = shuffle(df_nuebar_val).reset_index(drop=True)[variables_w]
@@ -592,6 +643,9 @@ df_val = shuffle(pd.concat([df_sig_val, df_bkg_val]), random_state=1).reset_inde
 x_val = df_val[df_val.columns[:-2]] # Removes weight and Y for training
 y_val = df_val['Y']
 w_val = df_val['weight']
+
+
+
 
 # ------------------------------------------------------------------------------------------
 # --- test sample
@@ -607,28 +661,42 @@ x_test = df_test[df_test.columns[:-2]] # Removes weight and Y for training
 y_test = df_test['Y']
 w_test = df_test['weight']
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ====================== #
 #      BDT TRAINING      #
 # ====================== #
 
-print('\n\033[1mStart training...\033[0m\n')
+printtitle('Start BDT training...')
 
-print('Signal')
-print('Training:     %.2e entries' % len(df_nuebar_train))
-print('Validation:   %.2e entries' % len(df_nuebar_val))
-print('Testing:      %.2e entries' % len(df_nuebar_test))
-
-print('\nBackground')
-print('Training:     %.2e entries' % len(df_notnuebar_train))
-print('Validation:   %.2e entries' % len(df_notnuebar_val))
-print('Testing:      %.2e entries' % len(df_notnuebar_test))
+print('                 Signal             Background')
+print('Training:        %.2e           %.2e' % (len(df_nuebar_train),len(df_notnuebar_train)))
+print('Validation:      %.2e           %.2e' % (len(df_nuebar_val),len(df_notnuebar_val)))
+print('Testing:         %.2e           %.2e\n' % (len(df_nuebar_test),len(df_notnuebar_test)))
 
 use_label_encoder=False # removes warning message because XGBClassifier won't be used in future releases
 
-model = XGBClassifier(n_estimators=550,                   # maximum number of rounds
-                      max_depth=3,                        # number of cuts
-                      scale_pos_weight = 5,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
-                      learning_rate=0.1,                  # steps
+print('scale_pos_weight = %f' % (sum(df_bkg_train.weight) / sum(df_sig_train.weight)))
+
+model = XGBClassifier(n_estimators=550,                   # maximum number of rounds    300
+                      max_depth=3,                        # number of cuts              6
+                      scale_pos_weight = 1,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
+                      learning_rate=0.1,                  # steps   0.05
                       objective='binary:logistic',        # bdt score 0-1
                       colsample_bytree=0.8)
 
@@ -649,60 +717,59 @@ auc_val = results['validation_1']['auc']                  # subsample: auc for v
 error_train = results['validation_0']['error']            # subsample: error for training
 error_val = results['validation_1']['error']              # subsample: error for validation
 
+
+
+
+
+
+
+
+
+
+
+
+
+# ==================== #
+#      MAKE PLOTS      #
+# ==================== #
+
+# --- plot auc and error for training and validation
+
 plt.figure(figsize=(15,5))
 
-# --- plot auc for training and validation
 plt.subplot(121)
 plt.plot(range(0,n_estimators), auc_train, c='blue', label='train')
 plt.plot(range(0,n_estimators), auc_val, c='orange', label='validation')
 ymin = min(min(auc_train),min(auc_val))
 ymax = max(max(auc_train),max(auc_val))
 plt.ylabel('AUC')
+plt.xlabel('Estimators')
 plt.ylim(ymin, ymax)
 plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
 plt.legend(loc='best', prop={'size': legend_size})
 
-# --- plot error for training and validation
 plt.subplot(122)
 plt.plot(range(0,n_estimators), error_train, c='blue', label='train')
 plt.plot(range(0,n_estimators), error_val, c='orange', label='validation')
 ymin = min(min(error_train),min(error_val))
 ymax = max(max(error_train),max(error_val))
 plt.ylabel('Classification Error')
+plt.xlabel('Estimators')
 plt.ylim(ymin, ymax)
 plt.vlines(model.best_iteration, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
 plt.legend(loc='best', prop={'size': legend_size})
-plt.savefig('plots/training_validation.pdf')
+
+plt.savefig('plots/bdt_auc_error.pdf')
+
+# --- plot important features
 
 plt.figure(figsize=(8,5))
-
 list_feat = plot_important_features(variables_w[:-2], model.feature_importances_, 16, 'NC') # number not greater than the number of variables
 
-def plot_important_features(features, feature_importances_, number, name):
-    
-    zipped = zip(features, feature_importances_)
-    zipped_sort = sorted(zipped, key = lambda x:x[1], reverse=True)
-    zipped_sort_reduced = zipped_sort[:number]
-    
-    res = [[ i for i, j in zipped_sort_reduced], 
-           [ j for i, j in zipped_sort_reduced]]
-    red_features = res[0]
-    red_importances = res[1]
-    
-    plt.barh(range(len(red_importances)), red_importances, align='center')
-    plt.yticks(np.arange(len(red_features)), red_features)
-    plt.xlabel("Feature importance")
-    plt.ylabel("Top %i features"%(number))
-    #plt.xscale('log')
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1)
-    plt.tight_layout()
-    plt.savefig('plots/training_validation_important_features.pdf')
-    
-    return red_features
-
-#===========================================================================================================================================================================================
+# --- signal correlation
 
 plt.figure(figsize=(13,13))
+
 plt.title('Signal correlation')
 labels = list_feat
 plt.imshow(df_sig_train[list_feat].corr())
@@ -710,8 +777,9 @@ plt.xticks(range(len(labels)), labels, rotation ='vertical')
 plt.yticks(range(len(labels)), labels, rotation ='horizontal')
 plt.colorbar()
 plt.tight_layout()
-plt.savefig('plots/signal_correlation.pdf')
+plt.savefig('plots/bdt_signal_correlation.pdf')
 
+# --- background correlation
 
 plt.figure(figsize=(13,13))
 plt.title('Background correlation')
@@ -721,9 +789,9 @@ plt.xticks(range(len(labels)), labels, rotation ='vertical')
 plt.yticks(range(len(labels)), labels, rotation ='horizontal')
 plt.colorbar()
 plt.tight_layout()
-plt.savefig('plots/background_correlation.pdf')
+plt.savefig('plots/bdt_background_correlation.pdf')
 
-#===========================================================================================================================================================================================
+#===========================================================================================
 
 pred_sig_train = model.predict_proba(df_sig_train[variables])[:,1] # column 1=success, 0=fail
 pred_sig_test = model.predict_proba(df_sig_test[variables])[:,1]
@@ -768,7 +836,7 @@ plt.xlabel('BDT score')
 plt.yscale('log')
 plt.legend(loc='best', prop={'size': legend_size})
 
-plt.savefig('plots/final_bdt_log_scale.pdf')
+plt.savefig('plots/bdt_score_log_scale.pdf')
 
 
 plt.figure(figsize=(14,4))
@@ -807,58 +875,148 @@ plt.xlim(xrange)
 plt.xlabel('BDT score')
 plt.legend(loc='best', prop={'size': legend_size})
 
-plt.savefig('plots/final_bdt.pdf')
+plt.savefig('plots/bdt_score.pdf')
 
-'''
-# ======================================= #
-#      BDT TRAINING USING GRID SEARCH     #
-# ======================================= #
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ===================== #
+#      GRID SEARCH      #
+# ===================== #
+
+printtitle('Start GridSearch...')
 
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
-hyperparams = {'n_estimators' : [300, 400, 500, 600, 700],
-               'max_depth' : [2, 3, 4, 5, 6],
-               'learning_rate' : [0.05, 0.075, 0.1, 0.125]}
+# --- parameters used for the BDT training
+param = {
+         'n_estimators'      : 500,
+         'max_depth'         : 6,                       # value optimised by gridsearch
+         'scale_pos_weight'  : 1,
+         'learning_rate'     : 0.1,
+         'objective'         : 'binary:logistic',
+         'colsample_bytree'  : 0.8
+         }
 
-bst = XGBClassifier(n_estimators=550,                     # maximum number of rounds
-                      max_depth=3,                        # number of cuts
-                      scale_pos_weight = 5,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
-                      learning_rate=0.1,                  # steps
-                      objective='binary:logistic',        # bdt score 0-1
-                      colsample_bytree=0.8)
+bst = xgboost.XGBClassifier(**param,)
 
+# --- parameters that we want to vary using GridSearch
+hyperparams = {
+               #'n_estimators'     : [],
+               #'max_depth'        : [2,4,6,8,10],
+               #'scale_pos_weight' : [],
+               #'learning_rate'    : [].
+               #'colsample_bytree' : []
+               }
+
+folds = 3
 param_comb = 5
 
-random_search = RandomizedSearchCV(bst, param_distributions=hyperparams, n_iter=param_comb, scoring='roc_auc', verbose=100, random_state=1001)
+skf = StratifiedKFold(n_splits     = folds, 
+                      shuffle      = True, 
+                      random_state = 1001)
 
-random_search.fit(x_train,                                            # feature matrix
-                y_train,                                              # labels (Y=1 signal, Y=0 background)
-                sample_weight=w_train,                                # instance weights
-                eval_set = [(x_train,y_train), (x_val,y_val)],        # a list of (X,y) tuple pairs to use as validation sets ---> validation_0=train, validation_1=validation
-                sample_weight_eval_set = [w_train, w_val],            # list of arrays storing instances weights for the i-th validation set
-                eval_metric = ['auc', 'error'],                       # list of parameters under eval_metric: https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
-                early_stopping_rounds=300,                            # validation metric needs to improve at least once in every early_stopping_rounds round(s)
-                verbose=100)
+random_search = RandomizedSearchCV( bst,
+                                    param_distributions = hyperparams,
+                                    n_iter = 5,
+                                    scoring = 'roc_auc',
+                                    n_jobs = 1,
+                                    cv = skf.split(x_train,y_train),
+                                    verbose = 3,
+                                    random_state = 1001
+                                    )
+
+random_search.fit(x_train,
+                  y_train,
+                  eval_set                = [(x_train,y_train),(x_val,y_val)],
+                  sample_weight_eval_set  = [w_train, w_val],
+                  early_stopping_rounds   = 100,
+                  eval_metric             = ['auc','error'],
+                  verbose                 = 100)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# --- print results
 
 print('\n All results:')
 print(random_search.cv_results_)
 print('\n Best estimator:')
 print(random_search.best_estimator_)
+print('\n Best normalized gini score for %d-fold search with %d parameter combinations:' % (folds, param_comb))
+print(random_search.best_score_ * 2 - 1)
 print('\n Best hyperparameters:')
 print(random_search.best_params_)
-
 results = pd.DataFrame(random_search.cv_results_)
+results.to_csv('xgb-random-grid-search-results-01.csv', index=False)
 best_xgb = random_search.best_estimator_
+best_xgb.save_model('best_model.xgb')
+
+# --- extract the fit parameters
+
 progress = best_xgb.evals_result()
 
+auc_train     = progress['validation_0']['auc']
+auc_val       = progress['validation_1']['auc']
+error_train   = progress['validation_0']['error']
+error_val     = progress['validation_1']['error']
+
+# --- plot auc and error for training and validation
+
+plt.figure(figsize=(15,5))
+
+plt.subplot(121)
+plt.plot(progress['validation_0']['auc'], label='Training')
+plt.plot(progress['validation_1']['auc'], label ='Validation')
+plt.axvline(np.argmin(progress['validation_1']['auc']), ls = '--')
+plt.xlabel('Boosting Stage', fontsize = 16)
+plt.ylabel('AUC', fontsize = 16)
+plt.title('BDT Training', fontsize = 18)
+ymin = min(min(progress['validation_0']['auc']),min(progress['validation_1']['auc']))
+ymin = min(max(progress['validation_0']['auc']),max(progress['validation_1']['auc']))
+#plt.vlines(random_search.best_estimator_, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
+plt.legend()
+
+plt.subplot(122)
 plt.plot(progress['validation_0']['error'], label='Training')
 plt.plot(progress['validation_1']['error'], label ='Validation')
 plt.axvline(np.argmin(progress['validation_1']['error']), ls = '--')
 plt.xlabel('Boosting Stage', fontsize = 16)
 plt.ylabel('Error', fontsize = 16)
 plt.title('BDT Training', fontsize = 18)
+ymin = min(min(progress['validation_0']['error']),min(progress['validation_1']['error']))
+ymin = min(max(progress['validation_0']['error']),max(progress['validation_1']['error']))
+#plt.vlines(random_search.best_estimator_, ymin=ymin, ymax=ymax, ls='--', color='red', label='best iteration', alpha=0.5)
 plt.legend()
-plt.savefig('plots/after_boosting.pdf')
-'''
+
+plt.savefig('plots/boosting_stage_auc_error.pdf')
