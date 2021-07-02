@@ -476,6 +476,44 @@ def print_summary(df,label):
     print('Total entries: %.2e           nue = %.2e (%.2f)            overlay = %.2e (%.2f)' % (nentries,nentries_intrinsic,percentage_intrinsic,nentries_mc,percentage_mc))
     print('Total Weight:  %.2e           nue = %.2e                   overlay = %.2e' % (weight, weight_intrinsic, weight_mc))
 
+def print_particle_id(df,title):
+
+    # original_file = 0    intrinsic nue
+    # original_file = 1    overlay
+
+    # create subdataframes
+
+    # intrinsic nue
+    df_nue_IN = df[(df.truth_nuPdg==12) & (df.original_file==0)]
+    df_antinue_IN = df[(df.truth_nuPdg==-12) & (df.original_file==0)]
+    df_numu_IN = df[(df.truth_nuPdg==14) & (df.original_file==0)]
+    df_antinumu_IN = df[(df.truth_nuPdg==-14) & (df.original_file==0)]
+    df_electron_IN = df[(df.truth_nuPdg==11) & (df.original_file==0)]
+    df_positron_IN = df[(df.truth_nuPdg==-11) & (df.original_file==0)]
+
+    # overlay
+    df_nue_MC = df[(df.truth_nuPdg==12) & (df.original_file==1)]
+    df_antinue_MC = df[(df.truth_nuPdg==-12) & (df.original_file==1)]
+    df_numu_MC = df[(df.truth_nuPdg==14) & (df.original_file==1)]
+    df_antinumu_MC = df[(df.truth_nuPdg==-14) & (df.original_file==1)]
+    df_electron_MC = df[(df.truth_nuPdg==11) & (df.original_file==1)]
+    df_positron_MC = df[(df.truth_nuPdg==-11) & (df.original_file==1)]
+
+    d = {"Sample" : [len(df),"","|","",""],
+         "Nue"    : [len(df_nue_IN)+len(df_nue_MC),(len(df_nue_IN)+len(df_nue_MC))/len(df),"|",len(df_nue_IN), len(df_nue_MC)],
+         "AntiNue": [len(df_antinue_IN)+len(df_antinue_MC),(len(df_antinue_IN)+len(df_antinue_MC))/len(df),"|",len(df_antinue_IN), len(df_antinue_MC)],
+         "Numu"   : [len(df_numu_IN)+len(df_numu_MC),(len(df_numu_IN)+len(df_numu_MC))/len(df),"|", len(df_numu_IN), len(df_numu_MC)],
+         "AntiNumu" : [len(df_antinumu_IN)+len(df_antinumu_MC),(len(df_antinumu_IN)+len(df_antinumu_MC))/len(df),"|", len(df_antinumu_IN), len(df_antinumu_MC)],
+         "Rest"   : [len(df)-len(df_nue_IN)-len(df_nue_MC)-len(df_antinue_IN)-len(df_antinue_MC)-len(df_numu_IN)-len(df_numu_MC)-len(df_antinumu_IN)-len(df_antinumu_MC),"","|","",""]}
+
+    print("\n%s" % title)
+    print("{:<15} {:<10} {:<9} {:<5} {:<15} {:<10}".format('Particle ID','Total','','|','Intrinsic Nue','Overlay'))
+    for k, v in d.items():
+        a1, a2, a3, a4, a5 = v
+        print ("{:<15} {:<10} ({:<7.2}) {:<5} {:<15} {:<10}".format(k, a1, a2, a3, a4, a5))
+
+
+
 
 
 
@@ -514,24 +552,12 @@ print('Intrinsic Nue       entries = %.2e      POT = %.2e      Tot Weight = %.2e
 print('Overlay             entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_overlay),POT_MC,sum(df_overlay.weight)))
 print('Merged sample       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df), POT_MERGED, sum(df.weight)))
 
-# printing the content of the merged dataframe
-df_IN_nue = df_intrinsic_nue[df_intrinsic_nue.truth_nuPdg==12]
-df_IN_antinue = df_intrinsic_nue[df_intrinsic_nue.truth_nuPdg==-12]
-df_IN_numu = df_intrinsic_nue[df_intrinsic_nue.truth_nuPdg==14]
-df_IN_antinumu = df_intrinsic_nue[df_intrinsic_nue.truth_nuPdg==-14]
-print('Intrinsic Nue   nue=%f  antinue=%f  numu=%f  antinumu=%f' % (len(df_IN_nue), len(df_IN_antinue), len(df_IN_numu), len(df_IN_antinumu)))
+print_particle_id(df_intrinsic_nue,"Original Intrinsic Nue Sample")
+print_particle_id(df_overlay,"Original Overlay")
+print_particle_id(df,"Merged Sample")
 
-df_OVERLAY_nue = df_overlay[df_overlay.truth_nuPdg==12]
-df_OVERLAY_antinue = df_overlay[df_overlay.truth_nuPdg==-12]
-df_OVERLAY_numu = df_overlay[df_overlay.truth_nuPdg==14]
-df_OVERLAY_antinumu = df_overlay[df_overlay.truth_nuPdg==-14]
-print('Overlay   nue=%f  antinue=%f  numu=%f  antinumu=%f' % (len(df_OVERLAY_nue), len(df_OVERLAY_antinue), len(df_OVERLAY_numu), len(df_OVERLAY_antinumu)))
-
-df_MERGED_nue = df[df.truth_nuPdg==12]
-df_MERGED_antinue = df[df.truth_nuPdg==-12]
-df_MERGED_numu = df[df.truth_nuPdg==14]
-df_MERGED_antinumu = df[df.truth_nuPdg==-14]
-print('Merged   nue=%f  antinue=%f  numu=%f  antinumu=%f' % (len(df_MERGED_nue), len(df_MERGED_antinue), len(df_MERGED_numu), len(df_MERGED_antinumu)))
+df_nue_score = df[(df.numu_cc_flag>=0) & (df.nue_score>7)]
+print_particle_id(df_nue_score,'After Nue Score')
 
 
 
@@ -548,29 +574,25 @@ print('Merged   nue=%f  antinue=%f  numu=%f  antinumu=%f' % (len(df_MERGED_nue),
 
 
 
-# ==============================================================================================================================================================
 
-print('\n----------------------------------------------------------------------')
-print('Starting the first BDT, where we select nue+nuebar from the background')
-print('----------------------------------------------------------------------\n')
 
 # ==================================================== #
 #       DEFINE DATAFRAMS FOR SIGNAL AND BACKGROUD      #
 # ==================================================== #
 
-printtitle('Creating signal and background dataframes...')
-
 # --- signal and background
+printtitle('Creating signal and background dataframes...')
 df_signal = df[ (df.truth_nuPdg==-12) | (df.truth_nuPdg==12) ] 
 df_background = df[ (df.truth_nuPdg!=-12) & (df.truth_nuPdg!=12) ]
-print(df_signal)
-print(df_background)
-print('Number of entries                     signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+print_particle_id(df_signal, 'Signal Definition')
+print_particle_id(df_background, 'Background Definition')
 
 # --- apply generic neutrino selection
+printtitle('Applying the Generic Neutrino Selection...')
 df_signal = Gen(df_signal)
 df_background = Gen(df_background)
-print('Apply generic neutrino selection      signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+print_particle_id(df_signal, 'Signal (After applying Generic Neutrino Selection)')
+print_particle_id(df_background, 'Background (After applying Generic Neutrino Selection)')
 
 # --- resize signal and background
 if(len(df_signal)>len(df_background)):
@@ -579,7 +601,8 @@ if(len(df_signal)>len(df_background)):
 else:
     df_background = shuffle(df_background).reset_index(drop=True)
     df_background = df_background.iloc[:len(df_signal),:]
-print('Resize samples                        signal = %.2e       background = %.2e' % (len(df_signal),len(df_background)))
+print_particle_id(df_signal, 'Signal (After resizing)')
+print_particle_id(df_background, 'Background (After resizing)')
 
 # --- delete label
 df_signal.drop('original_file',axis='columns',inplace=True)
@@ -660,8 +683,8 @@ use_label_encoder=False # removes warning message because XGBClassifier won't be
 
 print('scale_pos_weight = %f' % (sum(df_bkg_train.weight) / sum(df_sig_train.weight)))
 
-model = XGBClassifier(n_estimators=300,                   # maximum number of rounds    550
-                      max_depth=3,                        # number of cuts              6
+model = XGBClassifier(#n_estimators=300,                   # maximum number of rounds    550
+                      max_depth=6,                       # number of cuts              6
                       scale_pos_weight = 1,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
                       learning_rate=0.01,                  # steps   0.05
                       objective='binary:logistic',        # bdt score 0-1
@@ -686,6 +709,7 @@ error_val = results['validation_1']['error']              # subsample: error for
 
 # save the bdt result to our dataframe
 df.loc[:,'bdt_score'] = model.predict_proba(df[variables])[:,1]
+df_overlay.loc[:,'bdt_score'] = model.predict_proba(df_overlay[variables])[:,1]
 
 # ==================== #
 #      MAKE PLOTS      #
@@ -844,8 +868,10 @@ plt.savefig('plots/bdt_score.pdf')
 # =================================== #
 
 # plot bdt score
-df_signal_bdt_score = df[(df.truth_nuPdg==12) | (df.truth_nuPdg==-12)]
-df_background_bdt_score = df[(df.truth_nuPdg!=12) & (df.truth_nuPdg!=-12)]
+
+df_signal_bdt_score = df_overlay[(df_overlay.truth_nuPdg==12) | (df_overlay.truth_nuPdg==-12)]
+df_background_bdt_score = df_overlay[(df_overlay.truth_nuPdg!=12) & (df_overlay.truth_nuPdg!=-12)]
+
 print('Total number of entries (without cuts)         signal = %d       background = %d' % (len(df_signal_bdt_score), len(df_background_bdt_score)))
 
 # plot bdt score for signal and background
@@ -868,7 +894,6 @@ while(var_bdt_score<1):
 
     df_signal_cut = df_signal_bdt_score[df_signal_bdt_score.bdt_score>var_bdt_score]
     df_background_cut = df_background_bdt_score[df_background_bdt_score.bdt_score>var_bdt_score]
-    print('bdt_score > %.2f                                  signal = %d       background = %d' % (var_bdt_score, len(df_signal_cut), len(df_background_cut)))
 
     # calculate purity
     if((len(df_signal_cut)+len(df_background_cut))!=0):
@@ -895,64 +920,3 @@ plt.plot(h_x_eff, h_eff, c='blue', label='Efficiency')
 plt.xlabel('BDT score')
 plt.legend(loc='best', prop={'size': legend_size})
 plt.savefig('plots/eff.pdf')
-
-
-'''
-
-printtitle('Calculating efficiency and purity...')
-
-# original number of nue and nuebar, using truth info
-df_n0_nue = df[(df.truth_nuPdg==12)]
-df_n0_nuebar = df[(df.truth_nuPdg==-12)]
-
-# number of nue and nuebar selected after the BDT
-df_selected_nue_nuebar = df[(df.bdt_score>0.9)]
-
-print('BDT score       efficiency (%)      purity (%)')
-
-# set up here the first score you want to choose and the step
-var_bdt_score = 0
-step = 0.1
-
-hist_y_eff = []
-hist_y_pur = []
-hist_x = []
-bin = 1
-
-while(var_bdt_score<1):
-
-    # get selected nue+nuebar
-    df_selected = df[df.bdt_score>var_bdt_score]
-
-    # calculate efficiency
-    efficiency = sum(df_selected.weight) / ( sum(df_n0_nue.weight) + sum(df_n0_nuebar.weight) )
-
-    # calculate purity
-    # what is the percentage of nue+nuebar in the final selected events?
-    df_purity = df[ (df.bdt_score>var_bdt_score) & ((df.truth_nuPdg==12) | (df.truth_nuPdg==-12)) ]
-    purity = sum(df_purity.weight) / sum(df.bdt_score>var_bdt_score)
-
-    # print summary
-    print('  %f           %.2f                %.2f' % (var_bdt_score,efficiency, purity))
-
-    # create vector
-    hist_y_eff.append(efficiency)
-    hist_y_pur.append(purity)
-    hist_x.append(var_bdt_score)
-
-    # update the variable
-    var_bdt_score = var_bdt_score+step
-    bin = bin+1
-
-# make plot
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(5,5))
-
-plt.plot(hist_x, hist_y_eff, c='blue', label='Efficiency')
-plt.plot(hist_x, hist_y_pur, c='orange', label='Purity')
-plt.xlabel('BDT score')
-plt.legend(loc='best', prop={'size': legend_size})
-plt.savefig('plots/eff.pdf')
-
-'''
