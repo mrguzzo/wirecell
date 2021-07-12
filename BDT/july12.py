@@ -156,7 +156,11 @@ def plot_important_features(features, feature_importances_, number, name):
     
     return red_features
 
+def print_nentries(df,text):
 
+    print('---> %s: %i = %i (%.2f) nue + %i (%.2f) mc' % (text,len(df),
+                                                          len(df[df.original_file==0]),len(df[df.original_file==0])/len(df),
+                                                          len(df[df.original_file==1]),len(df[df.original_file==1])/len(df)))
 
 
 
@@ -190,12 +194,6 @@ def plot_important_features(features, feature_importances_, number, name):
 #    IMPORT FILES   #
 # ----------------- #
 
-def print_nentries(df,text):
-
-    print('---> %s: %i = %i (%.2f) nue + %i (%.2f) mc' % (text,len(df),
-                                                          len(df[df.original_file==0]),len(df[df.original_file==0])/len(df),
-                                                          len(df[df.original_file==1]),len(df[df.original_file==1])/len(df)))
-
 print('\nImport files')
 
 filename_nue = '../rootfiles/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root'
@@ -203,11 +201,11 @@ filename_overlay = '../rootfiles/checkout_prodgenie_numi_overlay_run1.root'
 
 df_intrinsic_nue, POT_NUE = create_dataframe(filename_nue,'NUE')     # create dataframe and calculate POT
 calculate_extra_vars(df_intrinsic_nue,filename_nue)                  # calculate extra variables not in the checkout file
-print('---> Intrinsic Nue sample: %i' % len(df_intrinsic_nue))
+print('---> Intrinsic Nue sample: %i   (POT=%.2e)' % (len(df_intrinsic_nue),POT_NUE))
 
 df_overlay, POT_MC = create_dataframe(filename_overlay,'MC')         # create dataframe and calculate POT
 calculate_extra_vars(df_overlay,filename_overlay)                    # calculate extra variables not in the checkout file
-print('---> Overlay sample      : %i' % len(df_overlay))
+print('---> Overlay sample      : %i   (POT=%.2e)' % (len(df_overlay),POT_MC))
 
 # --- merge dataframes
 print('\nMerge samples')
@@ -555,15 +553,32 @@ plt.savefig('plots/overlay_bdt_score.pdf')
 # --- calculate efficiency and purity per cut
 var_bdt_score = 0.0
 step = 0.01
+
 h_pur = []
 h_eff = []
+h_nevents = []
+h_nue = []
+h_antinue = []
+
 h_x_pur = []
 h_x_eff = []
+h_x_nevents = []
+h_x = []
+
+# --- calculate the initial percentage of the signal made of nue and antinue
+nue = len(df_signal_bdt_score[df_signal_bdt_score.truth_nuPdg==12])/len(df_signal_bdt_score)
+antinue = len(df_signal_bdt_score[df_signal_bdt_score.truth_nuPdg==-12])/len(df_signal_bdt_score)
+print('nue=%.2f   antinue=%.2f' % (nue,antinue))
 
 while(var_bdt_score<1):
 
     df_signal_cut = df_signal_bdt_score[df_signal_bdt_score.bdt_score>var_bdt_score]
     df_background_cut = df_background_bdt_score[df_background_bdt_score.bdt_score>var_bdt_score]
+
+    if(len(df_signal_cut)!=0):
+        h_nue.append(len(df_signal_cut[df_signal_cut.truth_nuPdg==12])/len(df_signal_cut))
+        h_antinue.append(len(df_signal_cut[df_signal_cut.truth_nuPdg==-12])/len(df_signal_cut))
+        h_x.append(var_bdt_score)
 
     # calculate purity
     if((len(df_signal_cut)+len(df_background_cut))!=0):
@@ -577,6 +592,10 @@ while(var_bdt_score<1):
         h_eff.append(eff)
         h_x_eff.append(var_bdt_score)
 
+    # calculate number of selected events
+    h_nevents.append(len(df_signal_cut))
+    h_x_nevents.append(var_bdt_score)
+
     var_bdt_score = var_bdt_score + step
 
 # make plot
@@ -584,11 +603,28 @@ import matplotlib.pyplot as plt
 
 plt.figure(figsize=(5,5))
 
-#plt.plot(hist_x, hist_y_eff, c='blue', label='Efficiency')
 plt.plot(h_x_pur, h_pur, c='orange', label='Purity')
 plt.plot(h_x_eff, h_eff, c='blue', label='Efficiency')
 plt.grid()
 plt.xlabel('BDT score')
 plt.legend(loc='best', prop={'size': legend_size})
-plt.savefig('plots/eff.pdf')
+plt.savefig('plots/efficiency_purity.pdf')
 
+plt.figure(figsize=(5,5))
+plt.plot(h_x_nevents,h_nevents)
+plt.grid()
+plt.xlabel('BDT score')
+plt.ylabel('Number of selected events')
+plt.savefig('plots/nevents.pdf')
+
+plt.figure(figsize=(5,5))
+plt.grid()
+plt.plot(h_x,h_nue,label='Nue')
+plt.plot(h_x,h_antinue,label='Antinue')
+plt.savefig('plots/nue_antinue.pdf')
+
+
+
+
+
+# -----------------------------------------------------------------------------------------
