@@ -23,7 +23,8 @@ bdt_vars    = ['numu_cc_flag','nue_score']
 pot_vars    = ['pot_tor875']
 pfeval_vars = ['truth_corr_nuvtxX','truth_corr_nuvtxY','truth_corr_nuvtxZ','reco_nuvtxX', 'reco_nuvtxY', 'reco_nuvtxZ']
 eval_vars   = ['truth_isCC','truth_nuPdg','truth_vtxInside','weight_spline', 'weight_cv',
-               'match_found', 'stm_eventtype', 'stm_lowenergy', 'stm_LM', 'stm_TGM', 'stm_STM', 'stm_FullDead','stm_clusterlength']
+               'match_found', 'stm_eventtype', 'stm_lowenergy', 'stm_LM', 'stm_TGM', 'stm_STM', 'stm_FullDead','stm_clusterlength',
+               'truth_energyInside', 'match_completeness_energy']
 
 # --- variables calculated by me
 extra_vars  = ['cos_theta'] 
@@ -162,6 +163,42 @@ def print_nentries(df,text):
                                                           len(df[df.original_file==0]),len(df[df.original_file==0])/len(df),
                                                           len(df[df.original_file==1]),len(df[df.original_file==1])/len(df)))
 
+squared_min_dist = 5*5
+which_signal = 1    # 1=nue+antinue/rest, 2=nue/muon
+
+def define_signal(df):
+
+    # nue+antinue
+    if(which_signal==1):
+        df_ = df[ (df.truth_nuPdg==-12) | (df.truth_nuPdg==12) ]                # PDG definition
+        df_ = df_[df_.truth_isCC==1]                                            # apply CC interaction condition 
+        df_ = df_[df_.truth_vtxInside==1]                                       # apply in active volume condition
+        df_ = df_[df_.vtx_dist <= squared_min_dist]                             # check reco-true vertex distance
+
+    # nue
+    elif(which_signal==2):
+        df_ = df[df.truth_nuPdg==12]                   # nue
+        df_ = df_[df_.truth_isCC==1]                   # is CC
+        df_ = df_[df_.truth_vtxInside==1]              # true vtx inAV
+        df_ = df_[df_.vtx_dist<=squared_min_dist]      # reco-true vertex distance
+
+    return df_
+
+def define_background(df):
+
+    # not nue+antinue
+    if(which_signal==1):
+        # --- background is defined as everything that is not signal
+        df_ = df[ ((df.truth_nuPdg!=-12) & (df.truth_nuPdg!=12)) |            # not nue nor antinue
+                (df.truth_isCC!=1) |                                        # not CC
+                (df.truth_vtxInside!=1) |                                   # event out of active volume
+                (df.vtx_dist > squared_min_dist)]                           # reco-true vertex too far
+
+    # cosmics
+    elif(which_signal==2):
+        df_ = df[((df.match_completeness_energy <= df.truth_energyInside * 0.1) | (df.truth_energyInside <= 0))]
+
+    return df_
 
 
 
@@ -216,35 +253,11 @@ print_nentries(df,'Merged sample')
 df = apply_gen_nu_selection(df)  
 print_nentries(df,'Passed Gen   ')
 
-
-
 # -------------------------------- #
 #   DEFINE SIGNAL AND BACKGROUND   #
 # -------------------------------- #
 
 print('\nDefine signal/background dataframes')
-
-squared_min_dist = 5*5
-
-def define_signal(df):
-
-    df_ = df[ (df.truth_nuPdg==-12) | (df.truth_nuPdg==12) ]                # PDG definition
-    df_ = df_[df_.truth_isCC==1]                                            # apply CC interaction condition 
-    df_ = df_[df_.truth_vtxInside==1]                                       # apply in active volume condition
-    df_ = df_[df_.vtx_dist <= squared_min_dist]                             # check reco-true vertex distance
-
-    return df_
-
-def define_background(df):
-
-    # --- background is defined as everything that is not signal
-
-    df_ = df[ ((df.truth_nuPdg!=-12) & (df.truth_nuPdg!=12)) |            # not nue nor antinue
-              (df.truth_isCC!=1) |                                        # not CC
-              (df.truth_vtxInside!=1) |                                   # event out of active volume
-              (df.vtx_dist > squared_min_dist)]                           # reco-true vertex too far
-
-    return df_
 
 df_signal = define_signal(df)
 print_nentries(df_signal,    'Signal    ')
@@ -329,7 +342,7 @@ use_label_encoder=False # removes warning message because XGBClassifier won't be
 
 
 # --- hyperparameters used for the BDT
-param = {'n_estimators':           300,
+param = {'n_estimators':           300, 
          'max_depth':              3,
          'scale_pos_weight':       1,
          'learning_rate':          0.01,
@@ -556,6 +569,8 @@ step = 0.01
 
 h_pur = []
 h_eff = []
+h_nevents_nue = []
+h_nevents_antinue = []
 h_nevents = []
 h_nue = []
 h_antinue = []
@@ -593,6 +608,8 @@ while(var_bdt_score<1):
         h_x_eff.append(var_bdt_score)
 
     # calculate number of selected events
+    h_nevents_nue.append(len(df_signal_cut[df_signal_cut.truth_nuPdg==12]))
+    h_nevents_antinue.append(len(df_signal_cut[df_signal_cut.truth_nuPdg==-12]))
     h_nevents.append(len(df_signal_cut))
     h_x_nevents.append(var_bdt_score)
 
@@ -611,7 +628,10 @@ plt.legend(loc='best', prop={'size': legend_size})
 plt.savefig('plots/efficiency_purity.pdf')
 
 plt.figure(figsize=(5,5))
-plt.plot(h_x_nevents,h_nevents)
+plt.plot(h_x_nevents,h_nevents_nue,c='blue',label='Nue')
+plt.plot(h_x_nevents,h_nevents_antinue,c='orange',label='Antinue')
+plt.plot(h_x_nevents,h_nevents,c='red',label='Nue+Antinue')
+plt.legend(loc='best', prop={'size': legend_size})
 plt.grid()
 plt.xlabel('BDT score')
 plt.ylabel('Number of selected events')
@@ -619,8 +639,11 @@ plt.savefig('plots/nevents.pdf')
 
 plt.figure(figsize=(5,5))
 plt.grid()
-plt.plot(h_x,h_nue,label='Nue')
-plt.plot(h_x,h_antinue,label='Antinue')
+plt.plot(h_x,h_nue,c='blue',label='Nue')
+plt.plot(h_x,h_antinue,c='orange',label='Antinue')
+plt.legend(loc='best', prop={'size': legend_size})
+plt.xlabel('BDT score')
+plt.ylabel('Percentage')
 plt.savefig('plots/nue_antinue.pdf')
 
 
