@@ -300,17 +300,13 @@ BDT_vars = [x for x in BDT_variab_all if x not in Non_unique]
 
 pot_vars = ['pot_tor875']
 
-pfeval_vars = ['truth_NprimPio', 'truth_NCDelta', 
-               'reco_nuvtxX', 'reco_nuvtxY', 'reco_nuvtxZ',
-               'truth_corr_nuvtxX', 'truth_corr_nuvtxY', 'truth_corr_nuvtxZ']
+pfeval_vars = ['truth_NprimPio', 'truth_NCDelta', 'reco_nuvtxX', 'reco_nuvtxY', 'reco_nuvtxZ']
 
-eval_vars = ['truth_isCC', 'truth_nuPdg','truth_vtxInside', 
-             'weight_spline', 'weight_cv', 
+eval_vars = ['truth_isCC', 'truth_nuPdg', 'truth_nuEnergy', 'truth_vtxInside', 
+             'truth_vtxX', 'truth_vtxY', 'truth_vtxZ', 'weight_spline', 'weight_cv', 
              'weight_lee', 'truth_energyInside', 'match_completeness_energy', 
              'match_isFC', 'stm_clusterlength', 'match_found', 'stm_eventtype', 
              'stm_lowenergy', 'stm_LM', 'stm_TGM', 'stm_STM', 'stm_FullDead']
-
-extra_variables = ['cos_theta'] # variables that were calculated
 
 # =================== #
 #      FUNCTIONS      #
@@ -516,11 +512,11 @@ def apply_gen_nu_selection(df):
 
 def apply_vtx_quality(df):
 
-    distX = df.truth_corr_nuvtxX - df.reco_nuvtxX
-    distY = df.truth_corr_nuvtxY - df.reco_nuvtxY
-    distZ = df.truth_corr_nuvtxZ - df.reco_nuvtxZ
+    distX = df.truth_vtxX - df.reco_nuvtxX
+    distY = df.truth_vtxY - df.reco_nuvtxY
+    distZ = df.truth_vtxZ - df.reco_nuvtxZ
 
-    min_dist = 1 # unit = cm
+    min_dist = 5 # unit = cm
     squared_min_dist = min_dist * min_dist
 
     dist_squared = distX*distX + distY*distY + distZ*distZ
@@ -551,8 +547,12 @@ def apply_vtx_quality(df):
 #      OPEN FILE      #
 #==================== #
 
+printtitle('Open files')
 filename_nue = '../rootfiles/checkout_prodgenie_numi_intrinsic_nue_overlay_run1_OFFSETFIXED2.root'
 filename_overlay = '../rootfiles/checkout_prodgenie_numi_overlay_run1.root'
+
+print('intrinsic nue: %s' % filename_nue)
+print('overlay:       %s\n' % filename_overlay)
 
 # create dataframes
 df_intrinsic_nue, POT_NUE = create_dataframe(filename_nue,'NUE')
@@ -562,7 +562,18 @@ df_overlay, POT_MC = create_dataframe(filename_overlay,'MC')
 df = pd.concat([df_intrinsic_nue,df_overlay], ignore_index=True)
 POT_MERGED = POT_NUE + POT_MC
 
+extra_variables = ['cos_theta'] # variables that were calculated
 
+print('Intrinsic Nue       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_intrinsic_nue),POT_NUE,sum(df_intrinsic_nue.weight)))
+print('Overlay             entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df_overlay),POT_MC,sum(df_overlay.weight)))
+print('Merged sample       entries = %.2e      POT = %.2e      Tot Weight = %.2e' % (len(df), POT_MERGED, sum(df.weight)))
+
+print_particle_id(df_intrinsic_nue,"Original Intrinsic Nue Sample")
+print_particle_id(df_overlay,"Original Overlay")
+print_particle_id(df,"Merged Sample")
+
+df_nue_score = df_overlay[(df_overlay.numu_cc_flag>=0) & (df_overlay.nue_score>7)]
+print_particle_id(df_nue_score,'After Nue Score')
 
 
 
@@ -588,31 +599,21 @@ POT_MERGED = POT_NUE + POT_MC
 # ==================================================== #
 
 # --- signal
-
-def define_signal(df):
-
-    df_ = df[ (df.truth_nuPdg==-12) | (df.truth_nuPdg==12) ]                # definition
-    df_ = df_[df_.truth_isCC==1]                                            # apply CC interaction condition 
-    df_ = df_[df_.truth_vtxInside==1]                                       # apply in active volume condition
-    df_ = apply_gen_nu_selection(df_)                                       # apply generic neutrino selection
-    df_ = apply_vtx_quality(df_)                                            # check reco-true vertex distance
-
-    return df_
-
-df_signal = define_signal(df)
+df_signal = df[ (df.truth_nuPdg==-12) | (df.truth_nuPdg==12) ]               # definition
+df_signal = df_signal[(df_signal.truth_isCC==1)]                             # apply CC interaction condition           
+df_signal = df_signal[(df_signal.truth_vtxInside==1)]                        # apply in active volume condition
+df_signal = apply_gen_nu_selection(df_signal)                                # apply generic neutrino selection
+df_signal = apply_vtx_quality(df_signal)                                     # check reco-true vertex distance
 
 # --- background
-
-def define_background(df):
-
-    df_ = df[ (df.truth_nuPdg!=-12) & (df.truth_nuPdg!=12) ]
-    df_ = df_[df_.truth_isCC==1]
-    df_ = df_[df_.truth_vtxInside==1]
-    df_ = apply_gen_nu_selection(df_)
-
-    return df_
-
-df_background = define_background(df)
+#     nue+antinue, out AV
+#     not nue/antinue
+df_background = apply_gen_nu_selection(df)                                   # apply generic neutrino selection
+df_background = df_background[ (((df_background.truth_nuPdg==12)|(df_background.truth_nuPdg==-12)) & (df_background.truth_vtxInside!=1)) |
+                    (((df_background.truth_nuPdg!=12)&(df_background.truth_nuPdg!=-12)))]
+#df_background = df[ (df.truth_nuPdg!=-12) & (df.truth_nuPdg!=12) ]           # definition
+#df_background = df_background[(df_background.truth_isCC==1)]                 # apply CC interaction condition
+#df_background = df_background[(df_background.truth_vtxInside==1)]            # apply in active volume condition
 
 # --- resize signal and background
 if(len(df_signal)>len(df_background)):
@@ -700,15 +701,15 @@ print('Testing:         %.2e           %.2e\n' % (len(df_signal_test),len(df_bac
 
 use_label_encoder=False # removes warning message because XGBClassifier won't be used in future releases
 
-param = {'n_estimators':           300,
-         'max_depth':              3,
-         'scale_pos_weight':       1,
-         'learning_rate':          0.01,
-         'objective':              'binary:logistic',
-         'colsample_bytree':       0.8,
-         'lambda' :                1}
+print('scale_pos_weight = %f' % (sum(df_bkg_train.weight) / sum(df_sig_train.weight)))
 
-model = xgboost.XGBClassifier( **param,)
+model = XGBClassifier(n_estimators=300,                   # maximum number of rounds    550
+                      max_depth=3,                       # number of cuts              6
+                      scale_pos_weight = 1,               # sum(df_bkg_train.weight) / sum(df_sig_train.weight) (you should change it manually for your case)
+                      learning_rate=0.01,                  # steps   0.05
+                      objective='binary:logistic',        # bdt score 0-1
+                      colsample_bytree=0.8)
+
                                                                 # understand the parameters: https://xgboost.readthedocs.io/en/latest/python/python_api.html
 model.fit(x_train,                                              # feature matrix
           y_train,                                              # labels (Y=1 signal, Y=0 background)
@@ -716,7 +717,7 @@ model.fit(x_train,                                              # feature matrix
           eval_set = [(x_train,y_train), (x_val,y_val)],        # a list of (X,y) tuple pairs to use as validation sets ---> validation_0=train, validation_1=validation
           sample_weight_eval_set = [w_train, w_val],            # list of arrays storing instances weights for the i-th validation set
           eval_metric = ['auc', 'error'],                       # list of parameters under eval_metric: https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
-          early_stopping_rounds=40,                             # validation metric needs to improve at least once in every early_stopping_rounds round(s)
+          early_stopping_rounds=50,                             # validation metric needs to improve at least once in every early_stopping_rounds round(s)
           verbose=100)
 
 results = model.evals_result()                            # takes the results from the BDT training above
@@ -887,6 +888,7 @@ plt.savefig('plots/bdt_score.pdf')
 # =================================== #
 
 # plot bdt score
+
 df_signal_bdt_score = df_overlay[(df_overlay.truth_nuPdg==12) | (df_overlay.truth_nuPdg==-12)]
 df_background_bdt_score = df_overlay[(df_overlay.truth_nuPdg!=12) & (df_overlay.truth_nuPdg!=-12)]
 
@@ -908,29 +910,28 @@ h_x_eff = []
 
 while(var_bdt_score<1):
 
+    print('BDT score = %f' & var_bdt_score)
+
     df_signal_cut = df_signal_bdt_score[df_signal_bdt_score.bdt_score>var_bdt_score]
     df_background_cut = df_background_bdt_score[df_background_bdt_score.bdt_score>var_bdt_score]
-
-    #print('BDT score = %f          signal = %f          background = %f' % (var_bdt_score,len(df_signal_cut),len(df_background)))
 
     # calculate purity
     if((len(df_signal_cut)+len(df_background_cut))!=0):
         pur = len(df_signal_cut)/(len(df_signal_cut)+len(df_background_cut))
         h_pur.append(pur)
         h_x_pur.append(var_bdt_score)
+        print('Purity = %f' % pur)
     
     # calculate efficiency
     if((len(df_signal_bdt_score)!=0)):
         eff = len(df_signal_cut)/len(df_signal_bdt_score)
-        print('\nEfficiency:')
-        print('BDT score                       = %f' % var_bdt_score)
-        print('Signal entries after the cut    = %f' % len(df_signal_cut))
-        print('Total number of entries         = %f' % len(df_signal_bdt_score))
-        print('Efficiency                      = %f' % eff)
         h_eff.append(eff)
         h_x_eff.append(var_bdt_score)
+        print('Efficiency = %f' % eff)
 
     var_bdt_score = var_bdt_score + step
+
+    print('')
 
 # make plot
 import matplotlib.pyplot as plt
@@ -940,91 +941,6 @@ plt.figure(figsize=(5,5))
 #plt.plot(hist_x, hist_y_eff, c='blue', label='Efficiency')
 plt.plot(h_x_pur, h_pur, c='orange', label='Purity')
 plt.plot(h_x_eff, h_eff, c='blue', label='Efficiency')
-plt.grid()
 plt.xlabel('BDT score')
 plt.legend(loc='best', prop={'size': legend_size})
 plt.savefig('plots/eff.pdf')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-# ==============================================================================================================================================================
-
-from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import StratifiedKFold
-
-param = {'max_depth':4, # The trees will grow to this depth, so maximum 2^6 leaves
-         #'eta':.3, #shrink the weight of each stage by this amount (geometric series)
-         'objective':'binary:logistic', # Probably don't mess with this
-         'subsample':0.8, #"Bagging" by randomly sampling rows with replacement this fraction of events in each stage. 
-         'colsample_bylevel':1, #if you want to use "Random Forests" which resample on the columns, change to a number in [0,1]. 
-                                 #Change "bylevel" to "bytree" or "bynode" to change when this resampling occurs (stage, depth, or node)
-         #'min_split_loss':1, #This is "Gamma" in the XGBoost paper, a proposed split needs to improve the loss function by this amount 
-         'lambda':1, #L2 regularization. Can think of this as preventing the BDT from separating leaf too aggressively. 
-                     #Probably don't need to tweak too much, the topological regularizers tend to have bigger effects. 
-         #'monotone_constraints': '(-1,0,0)' # this one is really cool. If you know that you want the classifier
-                                             #to generally increase (decrease) in a given direction, you can specify it,
-                                             #and then the output will be monotonically increasing (decreasing)
-         #'scale_pos_weight':max(wneg,wpos)/min(wpos, wneg)
-         'learning_rate': 0.075,
-         #'gamma': 6.0
-        }
-
-hyperparams = { #'learning_rate':      [.05, .075, .1, .125],
-                #'gamma':              np.r_[2:7:.25],
-                #'subsample':          np.r_[.8:1.01:.025],
-                #'colsample_bytree':   [0.6, 0.8, 1.0],
-                'max_depth':           [4, 6, 8,9,10]
-                }
-
-bst = xgboost.XGBClassifier(  **param,)
-folds = 3
-param_comb = 5
-
-watchlist =  [ (x_train,y_train), (x_test,y_test)]
-
-fit_dict = { "eval_set": watchlist,
-             "early_stopping_rounds":50,
-             "eval_metric":"error","verbose":5}
-
-skf = StratifiedKFold(n_splits=folds, shuffle = True, random_state = 1001)
-X,Y = x_train,y_train
-
-random_search = RandomizedSearchCV(bst, param_distributions=hyperparams, n_iter=param_comb, scoring='roc_auc',
-                                   n_jobs=1, cv=skf.split(X,Y), verbose=3, random_state=1001,
-                                  )
-random_search.fit(X, Y, **fit_dict)
-
-# ---------------------------
-
-print('\n All results:')
-print(random_search.cv_results_)
-print('\n Best estimator:')
-print(random_search.best_estimator_)
-print('\n Best normalized gini score for %d-fold search with %d parameter combinations:' % (folds, param_comb))
-print(random_search.best_score_ * 2 - 1)
-print('\n Best hyperparameters:')
-print(random_search.best_params_)
-results = pd.DataFrame(random_search.cv_results_)
-results.to_csv('xgb-random-grid-search-results-01.csv', index=False)
-best_xgb = random_search.best_estimator_
-best_xgb.save_model('best_model.xgb')
-progress = best_xgb.evals_result()
-
-'''
